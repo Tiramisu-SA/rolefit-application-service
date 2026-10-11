@@ -3,7 +3,7 @@
   "info":
     {
       "title": "RoleFit Application Service",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "Internal application submission, review, and status notifications behind an authenticating gateway. Trusted identity headers are not public credentials. Submission forwards the bearer token to owning services.",
     },
   "servers":
@@ -865,6 +865,7 @@
                   "history",
                   "resumeSnapshot",
                   "coverLetter",
+                  "development",
                 ],
               "properties":
                 {
@@ -1025,6 +1026,45 @@
                     },
                   "coverLetter":
                     { "type": "string", "nullable": true, "maxLength": 10000 },
+                  "development":
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["fixtureSet", "sources"],
+                      "properties":
+                        {
+                          "fixtureSet":
+                            {
+                              "type": "string",
+                              "enum": ["submission-demo-v1", null],
+                              "nullable": true,
+                            },
+                          "sources":
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required":
+                                [
+                                  "jobPosting",
+                                  "resumePreparation",
+                                  "jobDiscovery",
+                                  "candidateProfile",
+                                ],
+                              "properties":
+                                {
+                                  "jobPosting": { "enum": ["live", "fixture"] },
+                                  "resumePreparation":
+                                    { "enum": ["live", "fixture"] },
+                                  "jobDiscovery":
+                                    { "enum": ["live", "fixture"] },
+                                  "candidateProfile":
+                                    { "enum": ["live", "fixture"] },
+                                },
+                            },
+                        },
+                      "nullable": true,
+                      "description": "Persisted development source labels; null for strict-live and legacy applications. Modes are configuration, never caller input.",
+                    },
                 },
             },
           "ApplicationList":

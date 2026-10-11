@@ -71,7 +71,7 @@ Content-Type: application/json
 {"jobId":"job_seed_frontend"}
 ```
 
-Each upstream call has `UPSTREAM_TIMEOUT_MS` (default 5,000 ms). gRPC and streamed REST responses are bounded to 2 MiB. Responses are validated and safe fields selected; malformed/mismatched results fail closed. Configure TLS with `UPSTREAM_GRPC_TLS=true` and an optional `UPSTREAM_GRPC_CA_FILE` when needed; HTTPS verifies certificates normally. No production stub mode or fallback data is enabled.
+Each upstream call has `UPSTREAM_TIMEOUT_MS` (default 5,000 ms). gRPC and streamed REST responses are bounded to 2 MiB. Responses are validated and safe fields selected; malformed/mismatched results fail closed. Configure TLS with `UPSTREAM_GRPC_TLS=true` and an optional `UPSTREAM_GRPC_CA_FILE` when needed; HTTPS verifies certificates normally. Production and the regular stack default to strict-live dependencies. Explicit local development fixture/fallback modes require `APP_ENV=development` and a separate `application_dev` database. See [DEV_FALLBACK.md](DEV_FALLBACK.md); saved `application.development` records source provenance. No caller body/header can select a mode.
 
 These reads and the local DB commit cannot form one transaction across service databases. Snapshots reflect the successful reads; an upstream edit/closure immediately after a read can race submission. Application rechecks the returned deadline before persistence, but does not claim an atomic job/resume reservation.
 
@@ -176,3 +176,11 @@ This direct internal call tests trusted-header authorization, not JWT authentica
 ## Local port coordination
 
 Job Discovery uses REST 3002. Job Posting's published HTTP health default also uses 3002; when running both on the host, give Job Posting's health-only listener another port with `HTTP_PORT` (for example 3012), while keeping its gRPC port 50052. Application calls its gRPC endpoint, not its health HTTP port. Owner configurations are unchanged by this task.
+
+## Development provenance
+
+Application responses include `development: null` for strict-live submissions and legacy rows. When development modes are enabled, `development` is a persisted object with `fixtureSet` (`submission-demo-v1` if any fixture was used, otherwise null) and `sources` for `jobPosting`, `resumePreparation`, `jobDiscovery`, and `candidateProfile`, each `live` or `fixture`. This appears inside `application` in POST/GET/PATCH responses and each application in list responses. It is recorded with the application/history transaction and does not change after service recovery or restart. The RabbitMQ event contract remains unchanged and excludes this metadata.
+
+`live` calls the upstream; `fallback` calls it first and uses a matching fixture only on transport connection failure or timeout; `fixture` directly uses the matching sample. HTTP 401/403/404/429/500/503/504 responses, other gRPC business errors, closed jobs, expired deadlines, unapproved resumes, and malformed data are never replaced in fallback mode. A `fixture` request without an explicit candidate/job pair returns 503 `DEV_FIXTURE_NOT_FOUND`. An unmatched `fallback` request preserves the original unavailable error. No partial application is stored.
+
+Modes are process configuration, independent per dependency; no gateway change is required for development provenance. Production callers and clients should treat non-null development labels as development data. The demo Compose stack uses distinct PostgreSQL, RabbitMQ, and Mailpit volumes and captures email locally.

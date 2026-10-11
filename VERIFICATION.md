@@ -43,3 +43,14 @@ Gateway and frontend code changes are outside this task. Real email delivery and
 - Submission integration uses four labelled contract stubs. A live run against teammates' running services and gateway/Supabase authentication is still required. No real email provider or hosted deployment was added.
 
 The submission command's original transcript is retained at `evidence/submission-integration.log`.
+
+## Development fallback extension (2026-10-11)
+
+- Application typecheck, build, 13 unit-test groups, and OpenAPI/JSON Schema validation passed. Tests exercise each transport outage, all four unavailable together, recovery to live, explicit per-service modes, unknown/cross-pair IDs, preserved closed-job/deadline/unapproved-resume/auth/HTTP errors, redirects, REST configuration errors, invalid responses and concurrent provenance isolation.
+- Non-live configuration is rejected outside `APP_ENV=development` or the dedicated local `application_dev` database. Explicit sample resumes/matches satisfy the same submission contracts. Strict-live operation remains the default.
+- The real `rolefit-submission-dev` Compose stack built and passed `npm run test:development`: four controlled unreachable upstream targets selected matching demo data; snapshots/history/provenance were persisted; initial submission created no outbox event; duplicate/cover-letter/ownership checks passed; Application/Notification restart preserved the saved response; a later status change reached the real broker, Notification database, SMTP and Mailpit. The event JSON Schema is unchanged.
+- Migration 003 was also applied to the normal stack. `npm run test:submission` passed again, including a strict-live submission with null development provenance. A legacy sample application was read through the normal HTTP service with `development: null`; existing status/history were preserved.
+- Application's Notion handoff was updated and fetched back with the four mode settings, isolated database/stack instructions, explicit demo pairs, persisted provenance contract and verified results present. Other service pages/code were not changed for this extension. Notification's checkout remains clean.
+- Both test stacks and Docker Desktop were stopped afterward to release memory. Normal and development volumes were preserved. The development integration script removes only records it creates; captured Mailpit email is retained as evidence.
+
+The actual development command output is retained at `evidence/development-integration.log`. Upstream data is deliberately simulated, and gateway/JWT authentication plus live teammate-service integration remain unverified.

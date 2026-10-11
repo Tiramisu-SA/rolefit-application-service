@@ -1,4 +1,8 @@
-import type { ApprovedResume, SubmissionData } from "./submission";
+import type {
+  ApprovedResume,
+  SubmissionData,
+  SubmissionDevelopment,
+} from "./submission";
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { type Status, type StatusEvent, validateEvent } from "./event";
@@ -18,6 +22,7 @@ export interface Caller {
   companyId?: string;
 }
 export interface Application {
+  development: SubmissionDevelopment | null;
   id: string;
   jobId: string;
   companyId: string;
@@ -86,6 +91,7 @@ export class Repository implements ApplicationStore {
           [row.id],
         );
     return {
+      development: row.development ?? null,
       id: row.id,
       jobId: row.job_id,
       companyId: row.company_id,
@@ -127,8 +133,8 @@ export class Repository implements ApplicationStore {
       await client.query("BEGIN");
       const inserted = await client.query(
         `INSERT INTO applications(id,job_id,company_id,candidate_id,candidate,job_snapshot,resume_reference,
-          resume_snapshot,match_snapshot,cover_letter,status)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Submitted') RETURNING *`,
+          resume_snapshot,match_snapshot,cover_letter,development,status)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Submitted') RETURNING *`,
         [
           `app_${randomUUID()}`,
           data.jobId,
@@ -140,6 +146,7 @@ export class Repository implements ApplicationStore {
           data.resumeSnapshot,
           data.matchSnapshot,
           data.coverLetter,
+          data.development,
         ],
       );
       const row = inserted.rows[0];

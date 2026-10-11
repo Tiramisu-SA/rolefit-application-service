@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rolefit.local/contracts/submission-development.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fixtureSet", "sources"],
+  "properties": {
+    "fixtureSet": {
+      "type": ["string", "null"],
+      "enum": ["submission-demo-v1", null]
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jobPosting",
+        "resumePreparation",
+        "jobDiscovery",
+        "candidateProfile"
+      ],
+      "properties": {
+        "jobPosting": {
+          "enum": ["live", "fixture"]
+        },
+        "resumePreparation": {
+          "enum": ["live", "fixture"]
+        },
+        "jobDiscovery": {
+          "enum": ["live", "fixture"]
+        },
+        "candidateProfile": {
+          "enum": ["live", "fixture"]
+        }
+      }
+    }
+  }
+}

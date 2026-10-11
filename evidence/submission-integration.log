@@ -1,5 +1,5 @@
 
-> rolefit-application-service@0.2.0 test:submission
+> rolefit-application-service@0.3.0 test:submission
 > tsx scripts/submission-integration.ts
 
 PASS rejection and dependency failures create no application

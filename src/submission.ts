@@ -50,7 +50,17 @@ export interface SubmissionJob {
   applicationDeadline?: string;
   requireCoverLetter: boolean;
 }
+export interface SubmissionDevelopment {
+  fixtureSet: string | null;
+  sources: {
+    jobPosting: "live" | "fixture";
+    resumePreparation: "live" | "fixture";
+    jobDiscovery: "live" | "fixture";
+    candidateProfile: "live" | "fixture";
+  };
+}
 export interface SubmissionData {
+  development: SubmissionDevelopment | null;
   jobId: string;
   companyId: string;
   candidate: { id: string; name: string; email: string };
@@ -66,6 +76,8 @@ export interface SubmissionData {
   coverLetter: string | null;
 }
 export interface SubmissionSources {
+  development?: SubmissionDevelopment;
+  forSubmission?(jobId: string, caller: Caller): SubmissionSources;
   getJob(
     jobId: string,
     caller: Caller,
@@ -173,8 +185,10 @@ export class SubmissionService {
         "ALREADY_APPLIED",
         "You have already applied to this job",
       );
+    const sources =
+      this.sources.forSubmission?.(input.jobId, caller) ?? this.sources;
     // BUC-2C: job check -> approved resume -> match -> persist. No write before all checks pass.
-    const job = await this.sources.getJob(input.jobId, caller, authorization);
+    const job = await sources.getJob(input.jobId, caller, authorization);
     if (
       job.id !== input.jobId ||
       !job.title.trim() ||
@@ -212,7 +226,7 @@ export class SubmissionService {
         "COVER_LETTER_REQUIRED",
         "This job requires a cover letter",
       );
-    const resume = await this.sources.getApprovedResume(
+    const resume = await sources.getApprovedResume(
       input.jobId,
       caller,
       authorization,
@@ -223,7 +237,7 @@ export class SubmissionService {
       resume.jobId !== input.jobId
     )
       upstreamInvalid("Resume Preparation");
-    const match = await this.sources.getMatchResult(
+    const match = await sources.getMatchResult(
       input.jobId,
       caller,
       authorization,
@@ -235,7 +249,7 @@ export class SubmissionService {
     )
       upstreamInvalid("Job Discovery");
     // Contact information comes from the profile owner, never from the submission body or decoded unverified JWT.
-    const candidate = await this.sources.getCandidate(caller, authorization);
+    const candidate = await sources.getCandidate(caller, authorization);
     if (candidate.id !== caller.userId) upstreamInvalid("Candidate Profile");
     if (!validateCandidate(candidate) || !candidate.name.trim())
       throw new AppError(
@@ -246,6 +260,9 @@ export class SubmissionService {
     checkDeadline();
     return this.store.submit(
       {
+        development: sources.development
+          ? structuredClone(sources.development)
+          : null,
         jobId: input.jobId,
         companyId: job.companyId,
         candidate,

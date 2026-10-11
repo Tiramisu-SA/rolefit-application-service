@@ -1,0 +1,21 @@
+# Use with: docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+# The separate project name gives PostgreSQL, RabbitMQ and Mailpit their own volumes.
+name: rolefit-submission-dev
+services:
+  postgres:
+    volumes:
+      - ./infra/init-dev.sql:/docker-entrypoint-initdb.d/002-development.sql:ro
+  application:
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql://application:application-local@postgres:5432/application_dev
+      UPSTREAM_MODE: ${UPSTREAM_MODE:-fallback}
+      JOB_POSTING_MODE: ${JOB_POSTING_MODE:-${UPSTREAM_MODE:-fallback}}
+      RESUME_PREPARATION_MODE: ${RESUME_PREPARATION_MODE:-${UPSTREAM_MODE:-fallback}}
+      JOB_DISCOVERY_MODE: ${JOB_DISCOVERY_MODE:-${UPSTREAM_MODE:-fallback}}
+      CANDIDATE_PROFILE_MODE: ${CANDIDATE_PROFILE_MODE:-${UPSTREAM_MODE:-fallback}}
+  notification:
+    environment:
+      DATABASE_URL: postgresql://notification:notification-local@postgres:5432/notification_dev
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025

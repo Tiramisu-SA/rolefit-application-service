@@ -13,6 +13,13 @@ import {
   type SubmissionData,
 } from "./submission";
 
+// Only transport unavailability is eligible for the opt-in development fallback.
+// Ordinary HTTP/gRPC business errors retain their normal error codes.
+export class UpstreamUnavailableError extends AppError {
+  constructor(source: string) {
+    super(503, "SERVICE_UNAVAILABLE", `${source} is unavailable or timed out`);
+  }
+}
 type Message = Record<string, any>;
 export interface SourceConfig {
   jobPostingTarget: string;
@@ -132,13 +139,7 @@ export class UpstreamClients implements SubmissionSources {
             error.code === grpc.status.UNAVAILABLE ||
             error.code === grpc.status.CANCELLED
           )
-            return reject(
-              new AppError(
-                503,
-                "SERVICE_UNAVAILABLE",
-                `${source} is unavailable or timed out`,
-              ),
-            );
+            return reject(new UpstreamUnavailableError(source));
           if (error.code === grpc.status.UNAUTHENTICATED)
             return reject(
               new AppError(
@@ -282,28 +283,10 @@ export class UpstreamClients implements SubmissionSources {
           Accept: "application/json",
         },
         signal: AbortSignal.timeout(this.config.timeoutMs),
-        redirect: "error",
+        redirect: "manual",
       });
-      // Bound the streamed response as well as the advertised content length.
-      if (Number(response.headers.get("content-length")) > 2 * 1024 * 1024) {
-        await response.body?.cancel();
-        upstreamInvalid(source);
-      }
-      const reader = response.body?.getReader();
-      if (!reader) upstreamInvalid(source);
-      let size = 0;
-      const chunks: Uint8Array[] = [];
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > 2 * 1024 * 1024) {
-          await reader.cancel();
-          upstreamInvalid(source);
-        }
-        chunks.push(value);
-      }
       if (!response.ok) {
+        await response.body?.cancel().catch(() => {});
         if (response.status === 404)
           throw new AppError(
             source === "Candidate Profile" ? 409 : 404,
@@ -338,6 +321,25 @@ export class UpstreamClients implements SubmissionSources {
           `${source} could not complete the request`,
         );
       }
+      // Bound the streamed response as well as the advertised content length.
+      if (Number(response.headers.get("content-length")) > 2 * 1024 * 1024) {
+        await response.body?.cancel();
+        upstreamInvalid(source);
+      }
+      const reader = response.body?.getReader();
+      if (!reader) upstreamInvalid(source);
+      let size = 0;
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > 2 * 1024 * 1024) {
+          await reader.cancel();
+          upstreamInvalid(source);
+        }
+        chunks.push(value);
+      }
       let body: unknown;
       try {
         body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -349,10 +351,39 @@ export class UpstreamClients implements SubmissionSources {
       return body as Message;
     } catch (error) {
       if (error instanceof AppError) throw error;
+      const failure = error as {
+        name?: string;
+        code?: string;
+        cause?: { code?: string; errors?: { code?: string }[] };
+      };
+      const connectionCodes = [
+        "ECONNREFUSED",
+        "ECONNRESET",
+        "ETIMEDOUT",
+        "ENOTFOUND",
+        "EAI_AGAIN",
+        "ENETUNREACH",
+        "EHOSTUNREACH",
+        "EPIPE",
+        "UND_ERR_CONNECT_TIMEOUT",
+        "UND_ERR_HEADERS_TIMEOUT",
+        "UND_ERR_BODY_TIMEOUT",
+        "UND_ERR_SOCKET",
+      ];
+      const codes = [
+        failure.code,
+        failure.cause?.code,
+        ...(failure.cause?.errors?.map((x) => x.code) ?? []),
+      ];
+      if (
+        ["AbortError", "TimeoutError"].includes(failure.name ?? "") ||
+        codes.some((code) => code && connectionCodes.includes(code))
+      )
+        throw new UpstreamUnavailableError(source);
       throw new AppError(
-        503,
-        "SERVICE_UNAVAILABLE",
-        `${source} is unavailable or timed out`,
+        502,
+        "UPSTREAM_ERROR",
+        `${source} could not complete the request`,
       );
     }
   }

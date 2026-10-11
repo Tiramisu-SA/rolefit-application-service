@@ -1,0 +1,9 @@
+
+> rolefit-application-service@0.3.0 test:development
+> tsx scripts/development-integration.ts
+
+PASS controlled four-service outages -> matching fixtures -> real atomic application/history/provenance; no initial event
+PASS fixture requirements, duplicate protection, seeker/company isolation and list provenance
+PASS Application/Notification restart preserves immutable snapshots and development source labels
+PASS simulated submission -> real status outbox -> RabbitMQ -> Notification -> Mailpit email; event schema unchanged
+ALL DEVELOPMENT INTEGRATION CHECKS PASSED (isolated real storage/broker/SMTP; upstream fixtures; gateway/JWT not exercised)

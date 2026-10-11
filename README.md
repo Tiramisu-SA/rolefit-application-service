@@ -18,7 +18,7 @@ npm run test:submission
 
 Install dependencies in the sibling notification repository before running host-side integration checks: `npm ci` there. The integration command temporarily stops/restarts **only this stack**, creates uniquely named test applications, and cleans up those test records. Run it on this local development stack, not on a shared environment. Retry exhaustion and permanent SMTP rejection use injected sender failures against real PostgreSQL records; successful SMTP delivery and dependency outage/recovery use the real containers.
 
-The status-only stack can run without upstream services. Real submission additionally requires the documented Job Posting, Resume Preparation, Job Discovery, and Candidate Profile APIs; there is no fallback to fake data.
+The status-only stack can run without upstream services. Strict-live submission requires the documented Job Posting, Resume Preparation, Job Discovery, and Candidate Profile APIs. An opt-in, isolated development stack supports per-service `live`, `fallback`, and `fixture` modes; see [DEV_FALLBACK.md](DEV_FALLBACK.md). The regular stack defaults to live calls.
 
 The seed command inserts two labelled sample applications starting at `Submitted`; rerunning it does not reset status/history. Resume and match snapshots are null in these fixtures, not fabricated. Seeds produce no notifications. Integration emails remain in Mailpit as evidence.
 
@@ -71,7 +71,7 @@ Each service has its own Git history. No existing service repository is modified
 
 ## Checks
 
-`npm run typecheck`, `npm run build`, `npm test`, `npm run validate:contracts`, `npm run test:integration`, and `npm run test:submission`. Actual verification results are recorded in `VERIFICATION.md`. Live Supabase/gateway authentication is not covered until the gateway owner integrates the documented contract.
+`npm run typecheck`, `npm run build`, `npm test`, `npm run validate:contracts`, `npm run test:integration`, and `npm run test:submission`. `npm run test:development` verifies the separate fallback stack (see its setup instructions). Actual verification results are recorded in `VERIFICATION.md`. Live Supabase/gateway authentication is not covered until the gateway owner integrates the documented contract.
 
 ## Submission dependencies
 

@@ -113,6 +113,7 @@ async function main() {
     assert.equal(await count(), 1);
     assert.equal(application.status, "Submitted");
     assert.equal(application.history.length, 1);
+    assert.equal(application.development, null);
     assert.equal(application.history[0].changedBy, candidateId);
     assert.deepEqual(application.resumeSnapshot, fixtures.state.resume);
     assert.equal(application.matchSnapshot.score, 70);

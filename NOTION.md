@@ -11,3 +11,5 @@ Canonical contracts stay in the repositories. Update API.md, contracts, and the 
 GitHub source: [rolefit-application-service](https://github.com/Tiramisu-SA/rolefit-application-service).
 
 The submission extension adds seeker-only POST, immutable approved resume/match snapshots, and a supplemental Candidate Profile contact lookup. Service-owner handoffs are documented on the Application, Job Discovery, Job Posting, Resume Preparation, and gateway pages. Tests use clearly labelled contract stubs; live team integration remains to be performed.
+
+The Application page also documents the opt-in development modes (`live`, `fallback`, `fixture`), explicit `submission-demo-v1` pairs, isolated `rolefit-submission-dev` stack, persisted `application.development` provenance and unchanged notification event contract. The update was fetched back and checked on 2026-10-11. Local setup: `DEV_FALLBACK.md`; actual transcript: `evidence/development-integration.log`.

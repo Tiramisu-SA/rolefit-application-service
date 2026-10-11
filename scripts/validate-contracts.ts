@@ -4,6 +4,11 @@ import { parse } from "yaml";
 import SwaggerParser from "@apidevtools/swagger-parser";
 import { readFileSync } from "node:fs";
 import { validateMatch, validateResume } from "../src/submission";
+import developmentSchema from "../contracts/submission-development.v1.schema.json";
+import {
+  DEVELOPMENT_FIXTURES,
+  DEV_FIXTURE_SET,
+} from "../src/development-fixtures";
 import { loadService } from "../src/upstreams";
 import { validateEvent } from "../src/event";
 async function main() {
@@ -16,6 +21,29 @@ async function main() {
   );
   if (!validateNullableResume(null))
     throw new Error("Legacy null resume snapshot must satisfy OpenAPI");
+  const validateDevelopment = ajv.compile(developmentSchema);
+  const validateOpenApiDevelopment = ajv.compile(
+    doc.components.schemas.Application.properties.development,
+  );
+  const provenance = {
+    fixtureSet: DEV_FIXTURE_SET,
+    sources: {
+      jobPosting: "fixture",
+      resumePreparation: "live",
+      jobDiscovery: "fixture",
+      candidateProfile: "live",
+    },
+  };
+  if (
+    !validateDevelopment(provenance) ||
+    !validateOpenApiDevelopment(provenance) ||
+    !validateOpenApiDevelopment(null)
+  )
+    throw new Error("Development provenance contracts are invalid");
+  for (const fixture of DEVELOPMENT_FIXTURES) {
+    if (!validateResume(fixture.resume) || !validateMatch(fixture.match))
+      throw new Error("Development fixture violates upstream contract");
+  }
   const mine = readFileSync(
     "contracts/application.status.changed.v1.schema.json",
   );
@@ -49,7 +77,7 @@ async function main() {
   )
     throw new Error("Required upstream RPC missing");
   console.log(
-    "OpenAPI valid; event schemas identical; submission schemas compiled; upstream RPCs loaded; illustrative event valid",
+    "OpenAPI valid; event schemas identical; submission schemas compiled; upstream RPCs loaded; development provenance/fixtures valid; illustrative event valid",
   );
 }
 main().catch((error) => {

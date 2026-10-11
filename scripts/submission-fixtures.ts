@@ -55,6 +55,7 @@ export async function startFixtures(candidateId: string, jobId: string) {
     profileStatus: 200,
     malformedMatch: false,
     slowMatch: false,
+    slowProfile: false,
     malformedResume: false,
     calls: [] as {
       source: string;
@@ -158,12 +159,17 @@ export async function startFixtures(candidateId: string, jobId: string) {
       res.setHeader("Content-Type", "application/json");
       res.statusCode =
         source === "profile" ? state.profileStatus : state.discoveryStatus;
+      if (res.statusCode >= 300 && res.statusCode < 400)
+        res.setHeader("Location", "/unexpected-redirect");
       if (source === "match" && state.malformedMatch) return res.end("{");
       res.end(
         JSON.stringify(source === "profile" ? state.profile : state.match),
       );
     };
-    if (source === "match" && state.slowMatch) {
+    if (
+      (source === "match" && state.slowMatch) ||
+      (source === "profile" && state.slowProfile)
+    ) {
       const timer = setTimeout(send, 500);
       timer.unref();
     } else send();

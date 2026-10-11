@@ -3,16 +3,20 @@ import { createPool, integer } from "./config";
 import { Broker } from "./broker";
 import { Repository } from "./repository";
 import { SubmissionService } from "./submission";
+import { developmentConfig, withDevelopmentSources } from "./development";
 import { UpstreamClients } from "./upstreams";
 import { createApp } from "./app";
 import { publishNext } from "./outbox";
 
+// Validate dev-mode restrictions before opening database or broker connections.
+developmentConfig();
+const clients = new UpstreamClients();
+const sources = withDevelopmentSources(clients);
 const pool = createPool();
 const broker = new Broker(
   process.env.RABBITMQ_URL || "amqp://rolefit:rolefit-local@localhost:5672",
 );
 const repository = new Repository(pool);
-const sources = new UpstreamClients();
 let stopping = false;
 const server = createApp(
   repository,
@@ -46,7 +50,7 @@ async function stop() {
   server.close();
   await broker.stop();
   await worker;
-  sources.close();
+  clients.close();
   await pool.end();
 }
 process.on("SIGTERM", () => void stop());
