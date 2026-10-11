@@ -1,8 +1,8 @@
 {
   "name": "rolefit-application-service",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "RoleFit application-status notification workflow",
+  "description": "RoleFit application submission, review, and status notifications",
   "type": "commonjs",
   "engines": {
     "node": ">=22"
@@ -16,9 +16,12 @@
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
     "validate:contracts": "tsx scripts/validate-contracts.ts",
-    "test:integration": "tsx scripts/integration.ts"
+    "test:integration": "tsx scripts/integration.ts",
+    "test:submission": "tsx scripts/submission-integration.ts"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.6",
+    "@grpc/proto-loader": "^0.8.1",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "amqplib": "^0.10.9",
@@ -27,13 +30,13 @@
     "pg": "^8.16.3"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
     "@types/amqplib": "^0.10.7",
     "@types/express": "^5.0.3",
     "@types/node": "^22.18.0",
     "@types/pg": "^8.15.5",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "@apidevtools/swagger-parser": "^12.1.0",
     "yaml": "^2.8.1"
   }
 }

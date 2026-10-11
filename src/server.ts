@@ -2,6 +2,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createPool, integer } from "./config";
 import { Broker } from "./broker";
 import { Repository } from "./repository";
+import { SubmissionService } from "./submission";
+import { UpstreamClients } from "./upstreams";
 import { createApp } from "./app";
 import { publishNext } from "./outbox";
 
@@ -9,16 +11,22 @@ const pool = createPool();
 const broker = new Broker(
   process.env.RABBITMQ_URL || "amqp://rolefit:rolefit-local@localhost:5672",
 );
+const repository = new Repository(pool);
+const sources = new UpstreamClients();
 let stopping = false;
-const server = createApp(new Repository(pool), async () => {
-  let database = true;
-  try {
-    await pool.query("SELECT 1");
-  } catch {
-    database = false;
-  }
-  return { database, broker: broker.ready };
-}).listen(integer("PORT", 3004), process.env.HOST || "0.0.0.0", () =>
+const server = createApp(
+  repository,
+  async () => {
+    let database = true;
+    try {
+      await pool.query("SELECT 1");
+    } catch {
+      database = false;
+    }
+    return { database, broker: broker.ready };
+  },
+  new SubmissionService(repository, sources),
+).listen(integer("PORT", 3004), process.env.HOST || "0.0.0.0", () =>
   console.log("Application HTTP listening"),
 );
 broker.start();
@@ -38,6 +46,7 @@ async function stop() {
   server.close();
   await broker.stop();
   await worker;
+  sources.close();
   await pool.end();
 }
 process.on("SIGTERM", () => void stop());

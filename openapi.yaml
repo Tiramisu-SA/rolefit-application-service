@@ -3,8 +3,8 @@
   "info":
     {
       "title": "RoleFit Application Service",
-      "version": "0.1.0",
-      "description": "Internal service behind an authenticating gateway. Trusted identity headers are not public authentication credentials. Application submission is not implemented.",
+      "version": "0.2.0",
+      "description": "Internal application submission, review, and status notifications behind an authenticating gateway. Trusted identity headers are not public credentials. Submission forwards the bearer token to owning services.",
     },
   "servers":
     [
@@ -267,13 +267,167 @@
                     },
                 },
             },
+          "post":
+            {
+              "operationId": "submitApplication",
+              "description": "Seekers only. Checks job openness/deadline and cover letter, obtains approved resume and match, reads own profile contact fields, then atomically inserts application and initial history. Duplicate candidate/job returns 409. Auth remains in gateway.",
+              "parameters":
+                [
+                  {
+                    "name": "X-User-Id",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string", "format": "uuid" },
+                    "description": "Gateway-verified seeker UUID; request cannot choose another candidate",
+                  },
+                  {
+                    "name": "X-User-Role",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string", "enum": ["seeker"] },
+                  },
+                  {
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true,
+                    "schema":
+                      {
+                        "type": "string",
+                        "pattern": "^[Bb][Ee][Aa][Rr][Ee][Rr]\\s+\\S+$",
+                      },
+                    "description": "Gateway preserves the verified token for upstream calls; Application does not reverify JWT",
+                  },
+                ],
+              "requestBody":
+                {
+                  "required": true,
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            { "$ref": "#/components/schemas/Submission" },
+                          "example": { "jobId": "job_seed_frontend" },
+                        },
+                    },
+                },
+              "responses":
+                {
+                  "201":
+                    {
+                      "description": "Application and initial Submitted history committed; no submission email/event",
+                      "headers":
+                        {
+                          "Location":
+                            {
+                              "schema": { "type": "string" },
+                              "description": "Internal application read path",
+                            },
+                        },
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                {
+                                  "$ref": "#/components/schemas/ApplicationResponse",
+                                },
+                            },
+                        },
+                    },
+                  "400":
+                    {
+                      "description": "Invalid jobId, coverLetter, JSON or extra body fields",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "401":
+                    {
+                      "description": "Missing verified seeker identity or forwarded bearer token, or upstream rejected identity",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "403":
+                    {
+                      "description": "Only seekers may submit, or upstream denied access",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "404":
+                    {
+                      "description": "Job not found",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "409":
+                    {
+                      "description": "ALREADY_APPLIED, JOB_NOT_OPEN, APPLICATION_DEADLINE_PASSED, COVER_LETTER_REQUIRED, RESUME_DRAFT_NOT_FOUND, RESUME_NOT_APPROVED, PROFILE_REQUIRED or PROFILE_INCOMPLETE",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "502":
+                    {
+                      "description": "UPSTREAM_ERROR or UPSTREAM_RESPONSE_INVALID; no application saved",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "503":
+                    {
+                      "description": "Database or required upstream unavailable/timed out; no application saved",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                },
+            },
         },
       "/api/applications/{applicationId}":
         {
           "get":
             {
               "operationId": "getApplication",
-              "description": "Seeker owner or recruiter from the owning company.",
+              "description": "Owning seeker or recruiter from owning company. Returns stored candidate, job, approved resume, match and status history without live upstream calls.",
               "parameters":
                 [
                   {
@@ -709,6 +863,8 @@
                   "submittedAt",
                   "updatedAt",
                   "history",
+                  "resumeSnapshot",
+                  "coverLetter",
                 ],
               "properties":
                 {
@@ -723,14 +879,14 @@
                       "type": "object",
                       "nullable": true,
                       "additionalProperties": true,
-                      "description": "Owned snapshot/reference supplied when an application is created; null in local fixtures.",
+                      "description": "Submission stores draftId, format (company/personal), approvedAt and updatedAt; legacy references are retained.",
                     },
                   "matchSnapshot":
                     {
                       "type": "object",
                       "nullable": true,
                       "additionalProperties": true,
-                      "description": "Supplied submission-time snapshot; no live Job Discovery call.",
+                      "description": "Full MatchResult plus summary (explanation) and capturedAt; legacy snapshots retained. Reads never call Job Discovery.",
                     },
                   "status":
                     {
@@ -751,6 +907,124 @@
                       "type": "array",
                       "items": { "$ref": "#/components/schemas/HistoryEntry" },
                     },
+                  "resumeSnapshot":
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required":
+                        [
+                          "draftId",
+                          "candidateId",
+                          "jobId",
+                          "format",
+                          "sections",
+                          "approvedAt",
+                          "updatedAt",
+                        ],
+                      "properties":
+                        {
+                          "draftId":
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100,
+                            },
+                          "candidateId": { "type": "string", "format": "uuid" },
+                          "jobId":
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100,
+                            },
+                          "format": { "enum": ["company", "personal"] },
+                          "sections":
+                            {
+                              "type": "array",
+                              "minItems": 1,
+                              "maxItems": 100,
+                              "items":
+                                {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required":
+                                    [
+                                      "id",
+                                      "kind",
+                                      "title",
+                                      "meta",
+                                      "bullets",
+                                      "emphasized",
+                                    ],
+                                  "properties":
+                                    {
+                                      "id":
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100,
+                                        },
+                                      "kind":
+                                        {
+                                          "enum":
+                                            [
+                                              "summary",
+                                              "skills",
+                                              "education",
+                                              "experience",
+                                              "project",
+                                            ],
+                                        },
+                                      "title":
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 2000,
+                                        },
+                                      "meta":
+                                        { "type": "string", "maxLength": 2000 },
+                                      "bullets":
+                                        {
+                                          "type": "array",
+                                          "maxItems": 50,
+                                          "items":
+                                            {
+                                              "type": "object",
+                                              "additionalProperties": false,
+                                              "required":
+                                                ["id", "text", "tailored"],
+                                              "properties":
+                                                {
+                                                  "id":
+                                                    {
+                                                      "type": "string",
+                                                      "minLength": 1,
+                                                      "maxLength": 100,
+                                                    },
+                                                  "text":
+                                                    {
+                                                      "type": "string",
+                                                      "minLength": 1,
+                                                      "maxLength": 2000,
+                                                    },
+                                                  "tailored":
+                                                    { "type": "boolean" },
+                                                },
+                                            },
+                                        },
+                                      "emphasized": { "type": "boolean" },
+                                    },
+                                },
+                            },
+                          "approvedAt":
+                            { "type": "string", "format": "date-time" },
+                          "updatedAt":
+                            { "type": "string", "format": "date-time" },
+                        },
+                      "nullable": true,
+                      "description": "Immutable approved-resume content copied at submission; null for legacy seeded records.",
+                    },
+                  "coverLetter":
+                    { "type": "string", "nullable": true, "maxLength": 10000 },
                 },
             },
           "ApplicationList":
@@ -783,6 +1057,202 @@
                 {
                   "application": { "$ref": "#/components/schemas/Application" },
                   "notificationQueued": { "type": "boolean" },
+                },
+            },
+          "ApprovedResume":
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required":
+                [
+                  "draftId",
+                  "candidateId",
+                  "jobId",
+                  "format",
+                  "sections",
+                  "approvedAt",
+                  "updatedAt",
+                ],
+              "properties":
+                {
+                  "draftId":
+                    { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "candidateId": { "type": "string", "format": "uuid" },
+                  "jobId":
+                    { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "format": { "enum": ["company", "personal"] },
+                  "sections":
+                    {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 100,
+                      "items":
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required":
+                            [
+                              "id",
+                              "kind",
+                              "title",
+                              "meta",
+                              "bullets",
+                              "emphasized",
+                            ],
+                          "properties":
+                            {
+                              "id":
+                                {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100,
+                                },
+                              "kind":
+                                {
+                                  "enum":
+                                    [
+                                      "summary",
+                                      "skills",
+                                      "education",
+                                      "experience",
+                                      "project",
+                                    ],
+                                },
+                              "title":
+                                {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 2000,
+                                },
+                              "meta": { "type": "string", "maxLength": 2000 },
+                              "bullets":
+                                {
+                                  "type": "array",
+                                  "maxItems": 50,
+                                  "items":
+                                    {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": ["id", "text", "tailored"],
+                                      "properties":
+                                        {
+                                          "id":
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100,
+                                            },
+                                          "text":
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 2000,
+                                            },
+                                          "tailored": { "type": "boolean" },
+                                        },
+                                    },
+                                },
+                              "emphasized": { "type": "boolean" },
+                            },
+                        },
+                    },
+                  "approvedAt": { "type": "string", "format": "date-time" },
+                  "updatedAt": { "type": "string", "format": "date-time" },
+                },
+            },
+          "MatchResult":
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required":
+                [
+                  "jobId",
+                  "candidateId",
+                  "score",
+                  "breakdown",
+                  "matchedSkills",
+                  "missingSkills",
+                  "strengths",
+                  "gaps",
+                  "explanation",
+                  "computedAt",
+                ],
+              "properties":
+                {
+                  "jobId":
+                    { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "candidateId": { "type": "string", "format": "uuid" },
+                  "score": { "type": "number", "minimum": 0, "maximum": 100 },
+                  "breakdown":
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required":
+                        ["skills", "experience", "education", "preferences"],
+                      "properties":
+                        {
+                          "skills":
+                            { "type": "number", "minimum": 0, "maximum": 100 },
+                          "experience":
+                            { "type": "number", "minimum": 0, "maximum": 100 },
+                          "education":
+                            { "type": "number", "minimum": 0, "maximum": 100 },
+                          "preferences":
+                            { "type": "number", "minimum": 0, "maximum": 100 },
+                        },
+                    },
+                  "matchedSkills":
+                    {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items":
+                        { "type": "string", "minLength": 1, "maxLength": 4000 },
+                    },
+                  "missingSkills":
+                    {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items":
+                        { "type": "string", "minLength": 1, "maxLength": 4000 },
+                    },
+                  "strengths":
+                    {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items":
+                        { "type": "string", "minLength": 1, "maxLength": 4000 },
+                    },
+                  "gaps":
+                    {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items":
+                        { "type": "string", "minLength": 1, "maxLength": 4000 },
+                    },
+                  "explanation":
+                    { "type": "string", "minLength": 1, "maxLength": 20000 },
+                  "computedAt": { "type": "string", "format": "date-time" },
+                },
+            },
+          "Submission":
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["jobId"],
+              "properties":
+                {
+                  "jobId":
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,100}$",
+                      "maxLength": 100,
+                    },
+                  "coverLetter":
+                    {
+                      "type": "string",
+                      "maxLength": 10000,
+                      "description": "Required if Job Posting requires a cover letter. Trimmed; empty becomes null.",
+                    },
                 },
             },
         },

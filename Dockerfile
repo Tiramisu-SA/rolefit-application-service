@@ -5,6 +5,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 COPY contracts ./contracts
+COPY proto ./proto
 RUN npm run build
 RUN npm prune --omit=dev
 
@@ -14,5 +15,6 @@ ENV NODE_ENV=production
 COPY --from=build /service/node_modules ./node_modules
 COPY --from=build /service/dist ./dist
 COPY migrations ./migrations
+COPY proto ./proto
 USER node
 CMD ["sh", "-c", "node dist/src/migrate.js && exec node dist/src/server.js"]

@@ -81,13 +81,14 @@ async function patch(
 }
 async function inserted(target: string) {
   await appPool.query(
-    `INSERT INTO applications(id,job_id,company_id,candidate_id,candidate,job_snapshot,status) VALUES($1,'job-integration',$2,$3,$4,$5,'Submitted')`,
+    `INSERT INTO applications(id,job_id,company_id,candidate_id,candidate,job_snapshot,status) VALUES($1,$6,$2,$3,$4,$5,'Submitted')`,
     [
       target,
       company,
       user,
       { id: user, name: "Sample <candidate>", email: recipient },
       { id: "job-integration", title: "Sample <job>", companyId: company },
+      target === rollbackId ? "job-rollback" : "job-integration",
     ],
   );
   await appPool.query(
@@ -156,7 +157,7 @@ async function main() {
     assert.equal(
       (await api("/api/applications?jobId=job-integration")).body.applications
         .length,
-      2,
+      1,
     );
     assert.equal(
       (

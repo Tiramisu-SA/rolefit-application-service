@@ -1,3 +1,4 @@
+import type { ApprovedResume, SubmissionData } from "./submission";
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { type Status, type StatusEvent, validateEvent } from "./event";
@@ -25,6 +26,8 @@ export interface Application {
   jobSnapshot: { id: string; title: string; companyId: string };
   resumeReference: unknown;
   matchSnapshot: unknown;
+  resumeSnapshot: ApprovedResume | null;
+  coverLetter: string | null;
   status: Status;
   submittedAt: string;
   updatedAt: string;
@@ -52,6 +55,8 @@ function authorize(
     );
 }
 export interface ApplicationStore {
+  hasApplication(jobId: string, candidateId: string): Promise<boolean>;
+  submit(data: SubmissionData, caller: Caller): Promise<Application>;
   get(id: string, caller: Caller): Promise<Application>;
   mine(caller: Caller): Promise<Application[]>;
   applicants(jobId: string, caller: Caller): Promise<Application[]>;
@@ -89,6 +94,8 @@ export class Repository implements ApplicationStore {
       jobSnapshot: row.job_snapshot,
       resumeReference: row.resume_reference,
       matchSnapshot: row.match_snapshot,
+      resumeSnapshot: row.resume_snapshot ?? null,
+      coverLetter: row.cover_letter ?? null,
       status: row.status,
       submittedAt: row.submitted_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
@@ -99,6 +106,67 @@ export class Repository implements ApplicationStore {
         note: x.note,
       })),
     };
+  }
+  async hasApplication(jobId: string, candidateId: string): Promise<boolean> {
+    return !!(
+      await this.pool.query(
+        "SELECT 1 FROM applications WHERE job_id=$1 AND candidate_id=$2",
+        [jobId, candidateId],
+      )
+    ).rowCount;
+  }
+  async submit(data: SubmissionData, caller: Caller): Promise<Application> {
+    if (caller.role !== "seeker" || data.candidate.id !== caller.userId)
+      throw new AppError(
+        403,
+        "FORBIDDEN",
+        "Only the owning seeker can submit an application",
+      );
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query(
+        `INSERT INTO applications(id,job_id,company_id,candidate_id,candidate,job_snapshot,resume_reference,
+          resume_snapshot,match_snapshot,cover_letter,status)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Submitted') RETURNING *`,
+        [
+          `app_${randomUUID()}`,
+          data.jobId,
+          data.companyId,
+          caller.userId,
+          data.candidate,
+          data.jobSnapshot,
+          data.resumeReference,
+          data.resumeSnapshot,
+          data.matchSnapshot,
+          data.coverLetter,
+        ],
+      );
+      const row = inserted.rows[0];
+      await client.query(
+        "INSERT INTO application_status_history(application_id,status,at,changed_by,note) VALUES($1,'Submitted',$2,$3,NULL)",
+        [row.id, row.submitted_at, caller.userId],
+      );
+      // Initial submission is not a status-change notification.
+      const application = await this.hydrate(row, client);
+      await client.query("COMMIT");
+      return application;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      if (
+        (error as { code?: string; constraint?: string }).code === "23505" &&
+        (error as { constraint?: string }).constraint ===
+          "applications_candidate_job_unique"
+      )
+        throw new AppError(
+          409,
+          "ALREADY_APPLIED",
+          "You have already applied to this job",
+        );
+      throw error;
+    } finally {
+      client.release();
+    }
   }
   async get(id: string, caller: Caller): Promise<Application> {
     const { rows } = await this.pool.query(`${APPLICATION_READ} WHERE id=$1`, [

@@ -1,3 +1,4 @@
+import { SubmissionService } from "./submission";
 import express, {
   type Request,
   type Response,
@@ -29,6 +30,7 @@ function caller(req: Request): Caller {
 export function createApp(
   store: ApplicationStore,
   readiness: () => Promise<{ database: boolean; broker: boolean }>,
+  submission?: SubmissionService,
 ) {
   const app = express();
   app.disable("x-powered-by");
@@ -38,16 +40,14 @@ export function createApp(
   );
   app.get("/ready", async (_req, res) => {
     const state = await readiness();
-    res
-      .status(state.database ? 200 : 503)
-      .json({
-        status: state.database
-          ? state.broker
-            ? "ready"
-            : "degraded"
-          : "unavailable",
-        ...state,
-      });
+    res.status(state.database ? 200 : 503).json({
+      status: state.database
+        ? state.broker
+          ? "ready"
+          : "degraded"
+        : "unavailable",
+      ...state,
+    });
   });
   app.use("/api", (req, _res, next) => {
     try {
@@ -56,6 +56,23 @@ export function createApp(
     } catch (error) {
       next(error);
     }
+  });
+  app.post("/api/applications", async (req, res) => {
+    if (!submission)
+      throw new AppError(
+        503,
+        "SERVICE_UNAVAILABLE",
+        "Application submission is unavailable",
+      );
+    const application = await submission.submitApplication(
+      req.body,
+      getCaller(req),
+      req.get("Authorization"),
+    );
+    res
+      .location(`/api/applications/${application.id}`)
+      .status(201)
+      .json({ application });
   });
   app.get("/api/applications/mine", async (req, res) =>
     res.json({ applications: await store.mine(getCaller(req)) }),
@@ -124,26 +141,22 @@ export function createApp(
       error?.type === "entity.parse.failed" ||
       error?.type === "entity.too.large"
     ) {
-      res
-        .status(400)
-        .json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "Invalid JSON or request body too large",
-          },
-        });
+      res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid JSON or request body too large",
+        },
+      });
       return;
     }
     // Database errors and timeouts never expose connection strings or raw SQL details.
     console.error("Application operation failed");
-    res
-      .status(503)
-      .json({
-        error: {
-          code: "SERVICE_UNAVAILABLE",
-          message: "Application storage is unavailable",
-        },
-      });
+    res.status(503).json({
+      error: {
+        code: "SERVICE_UNAVAILABLE",
+        message: "Application storage is unavailable",
+      },
+    });
   });
   return app;
 }

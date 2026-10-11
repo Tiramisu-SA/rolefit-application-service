@@ -9,3 +9,5 @@ The implementation documentation was published directly through the Notion plugi
 Canonical contracts stay in the repositories. Update API.md, contracts, and the corresponding Notion page together. The gateway-owner checklist is on the Application page.
 
 GitHub source: [rolefit-application-service](https://github.com/Tiramisu-SA/rolefit-application-service).
+
+The submission extension adds seeker-only POST, immutable approved resume/match snapshots, and a supplemental Candidate Profile contact lookup. Service-owner handoffs are documented on the Application, Job Discovery, Job Posting, Resume Preparation, and gateway pages. Tests use clearly labelled contract stubs; live team integration remains to be performed.

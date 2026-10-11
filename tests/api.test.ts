@@ -7,6 +7,10 @@ import { validateEvent } from "../src/event";
 import { databaseConfig } from "../src/config";
 const calls: unknown[] = [];
 const store: ApplicationStore = {
+  hasApplication: async () => false,
+  submit: async () => {
+    throw new Error("Should not reach storage");
+  },
   get: async () => {
     throw new AppError(404, "APPLICATION_NOT_FOUND", "Application not found");
   },

@@ -33,8 +33,15 @@ services:
     volumes: ["maildata:/data"]
   application:
     build: .
+    extra_hosts: ["host.docker.internal:host-gateway"]
     environment:
       PORT: 3004
+      JOB_POSTING_GRPC_URL: ${JOB_POSTING_GRPC_URL:-host.docker.internal:50052}
+      RESUME_PREPARATION_GRPC_URL: ${RESUME_PREPARATION_GRPC_URL:-host.docker.internal:50053}
+      JOB_DISCOVERY_SERVICE_URL: ${JOB_DISCOVERY_SERVICE_URL:-http://host.docker.internal:3002}
+      CANDIDATE_PROFILE_SERVICE_URL: ${CANDIDATE_PROFILE_SERVICE_URL:-http://host.docker.internal:3001}
+      UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-5000}
+      UPSTREAM_GRPC_TLS: ${UPSTREAM_GRPC_TLS:-false}
       DATABASE_URL: postgresql://application:application-local@postgres:5432/application
       RABBITMQ_URL: amqp://rolefit:rolefit-local@rabbitmq:5672
     ports: ["127.0.0.1:3004:3004"]

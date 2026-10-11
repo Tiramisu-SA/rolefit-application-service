@@ -1,6 +1,6 @@
 # RoleFit Application Service
 
-Owns persisted applications, recruitment status history, and the transactional notification outbox. This task implements status changes for existing applications; application submission is intentionally absent.
+Owns persisted applications, recruitment status history, and the transactional notification outbox. Implements submission for seekers, reads for owning seekers/recruiter companies, and status changes with RabbitMQ notifications.
 
 ## Local stack
 
@@ -13,9 +13,12 @@ docker compose exec application node dist/src/seed.js
 npm run validate:contracts
 npm test
 npm run test:integration
+npm run test:submission
 ```
 
 Install dependencies in the sibling notification repository before running host-side integration checks: `npm ci` there. The integration command temporarily stops/restarts **only this stack**, creates uniquely named test applications, and cleans up those test records. Run it on this local development stack, not on a shared environment. Retry exhaustion and permanent SMTP rejection use injected sender failures against real PostgreSQL records; successful SMTP delivery and dependency outage/recovery use the real containers.
+
+The status-only stack can run without upstream services. Real submission additionally requires the documented Job Posting, Resume Preparation, Job Discovery, and Candidate Profile APIs; there is no fallback to fake data.
 
 The seed command inserts two labelled sample applications starting at `Submitted`; rerunning it does not reset status/history. Resume and match snapshots are null in these fixtures, not fabricated. Seeds produce no notifications. Integration emails remain in Mailpit as evidence.
 
@@ -41,7 +44,7 @@ Start infrastructure with `docker compose up -d postgres rabbitmq mailpit`, copy
 
 Read [API.md](API.md). `openapi.yaml` is OpenAPI 3.0.3 encoded as JSON (valid YAML). The canonical event schema is `contracts/application.status.changed.v1.schema.json`, included verbatim in Notification's repository. Update both copies together and validate them.
 
-Application trusts `X-User-Id`, `X-User-Role`, and recruiter `X-Company-Id` supplied by an authenticating gateway. These headers are **not authentication credentials**. Direct local test requests exercise authorization only. Deployment must make service ports inaccessible to untrusted callers. The existing gateway has not been modified or integrated by this task.
+Application trusts `X-User-Id`, `X-User-Role`, and recruiter `X-Company-Id` supplied by an authenticating gateway. These headers are **not authentication credentials**. Direct local test requests exercise authorization only. Deployment must make service ports inaccessible to untrusted callers. Gateway/frontend code is owned separately. The gateway must add seeker-only `POST /api/applications` and preserve the verified bearer token; see the handoff in API.md.
 
 ## Reliability and operations
 
@@ -68,4 +71,16 @@ Each service has its own Git history. No existing service repository is modified
 
 ## Checks
 
-`npm run typecheck`, `npm run build`, `npm test`, `npm run validate:contracts`, and `npm run test:integration`. Actual verification results are recorded in `VERIFICATION.md`. Live Supabase/gateway authentication is not covered until the gateway owner integrates the documented contract.
+`npm run typecheck`, `npm run build`, `npm test`, `npm run validate:contracts`, `npm run test:integration`, and `npm run test:submission`. Actual verification results are recorded in `VERIFICATION.md`. Live Supabase/gateway authentication is not covered until the gateway owner integrates the documented contract.
+
+## Submission dependencies
+
+Host Node defaults: Job Posting gRPC `localhost:50052`, Resume Preparation gRPC `localhost:50053`, Job Discovery HTTP `localhost:3002`, Candidate Profile HTTP `localhost:3001`. The Docker Application container uses `host.docker.internal` for these services running on your Mac. Override the URLs in an ignored `.env` for Compose, using addresses reachable **from inside the container**; `localhost` there means the Application container itself. If services run in another Docker project, connect them through a private network and use service hostnames. Compose does not start teammates' services or provision their databases.
+
+Use the Job Posting owner's documented `dev` contract (not its older default `main` protocol), and Resume Preparation's `main` contract. Copies and Git blob provenance are in `proto/README.md`. Match response details are in API.md and `contracts/match-result.v1.schema.json`.
+
+Run `npm run test:submission` after the local stack is up. It uses **real PostgreSQL, RabbitMQ, Notification, and Mailpit**, with labelled local gRPC/HTTP **contract stubs** for the four upstream APIs. It checks the new submit/read flow, concurrent duplicate prevention, rollback, snapshots, ownership, cover letters, and subsequent email notifications. It does not claim compatibility tested against running teammate services or real Supabase/gateway authentication.
+
+Migration `002_application_submission.sql` adds nullable resume content/cover letters and enforces one application per candidate/job. Existing rows/history are preserved. If historic duplicate pairs exist, migration fails visibly; inspect and resolve them explicitly rather than deleting data automatically.
+
+Local port coordination: the published Job Discovery REST port and Job Posting HTTP health default both use 3002. Keep Discovery on 3002 and configure Job Posting's health-only listener with `HTTP_PORT=3012` (its gRPC address stays 50052), or agree another unused health port with its owner. This task does not change either service's configuration.

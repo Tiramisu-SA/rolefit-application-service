@@ -1,0 +1,106 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "jobId",
+    "candidateId",
+    "score",
+    "breakdown",
+    "matchedSkills",
+    "missingSkills",
+    "strengths",
+    "gaps",
+    "explanation",
+    "computedAt"
+  ],
+  "properties": {
+    "jobId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "candidateId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skills", "experience", "education", "preferences"],
+      "properties": {
+        "skills": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "experience": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "education": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "preferences": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "matchedSkills": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      }
+    },
+    "missingSkills": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      }
+    },
+    "strengths": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      }
+    },
+    "explanation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "computedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rolefit.local/contracts/match-result.v1.schema.json"
+}

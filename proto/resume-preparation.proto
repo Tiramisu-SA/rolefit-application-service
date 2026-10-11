@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package rolefit.resumepreparation.v1;
+
+// Internal API of the Resume Preparation Service (port 50053).
+//
+// The Application Service calls GetApprovedResume at submission time to
+// snapshot the resume the seeker approved. Other services must NEVER read the
+// Resume Draft Store (MongoDB) directly. Consumers keep a copy of this file.
+//
+// Never renumber or reuse field numbers once other services depend on them.
+service ResumePreparationService {
+  // NOT_FOUND: no draft for this candidate and job.
+  // FAILED_PRECONDITION: a draft exists but the seeker has not approved it.
+  // INVALID_ARGUMENT: candidate_id is not a UUID or job_id is malformed.
+  rpc GetApprovedResume (GetApprovedResumeRequest) returns (GetApprovedResumeResponse);
+}
+
+message GetApprovedResumeRequest {
+  string candidate_id = 1;  // the seeker's user id (UUID), which is also their profile id
+  string job_id = 2;        // job_<ULID> from the Job Posting Service
+}
+
+message GetApprovedResumeResponse {
+  ApprovedResume resume = 1;
+}
+
+enum ResumeFormat {
+  RESUME_FORMAT_UNSPECIFIED = 0;
+  RESUME_FORMAT_COMPANY = 1;   // the job's company resume template
+  RESUME_FORMAT_PERSONAL = 2;  // the seeker's default format
+}
+
+// The resume exactly as approved. Only the sections the seeker included are sent.
+message ApprovedResume {
+  string draft_id = 1;
+  string candidate_id = 2;
+  string job_id = 3;
+  ResumeFormat format = 4;
+  repeated ResumeSection sections = 5;
+  string approved_at = 6;  // ISO-8601
+  string updated_at = 7;   // ISO-8601
+}
+
+// kind: summary | experience | project | skills | education
+message ResumeSection {
+  string id = 1;
+  string kind = 2;
+  string title = 3;
+  string meta = 4;         // dates or tech list, "" when none
+  repeated ResumeBullet bullets = 5;
+  bool emphasized = 6;
+}
+
+message ResumeBullet {
+  string id = 1;
+  string text = 2;
+  bool tailored = 3;
+}

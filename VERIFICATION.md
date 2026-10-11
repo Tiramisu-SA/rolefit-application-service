@@ -32,4 +32,14 @@ The original final integration command transcript is retained as `evidence/local
 
 ## Remaining integration boundaries
 
-Gateway and frontend changes are outside this task. Real email delivery and hosted PostgreSQL are configurable future steps but have not been deployed or tested here. Local fixtures are not genuine submitted applications. SMTP acceptance is not guaranteed real inbox placement, and a crash after SMTP acceptance can still cause a duplicate. At the time of the integration run, both repositories were local only. The team subsequently created private GitHub repositories; this service is at [https://github.com/Tiramisu-SA/rolefit-application-service](https://github.com/Tiramisu-SA/rolefit-application-service).
+Gateway and frontend code changes are outside this task. Real email delivery and hosted PostgreSQL are configurable future steps but have not been deployed or tested here. Local fixtures are not genuine submitted applications. SMTP acceptance is not guaranteed real inbox placement, and a crash after SMTP acceptance can still cause a duplicate. At the time of the integration run, both repositories were local only. The team subsequently created private GitHub repositories; this service is at [https://github.com/Tiramisu-SA/rolefit-application-service](https://github.com/Tiramisu-SA/rolefit-application-service).
+
+## Submission extension (2026-10-11)
+
+- Application typecheck, build, six unit-test groups, and OpenAPI validation passed after adding submission. Upstream schema validators compile and unit tests exercise malformed data/identity mismatches and real gRPC/HTTP transports against labelled contract stubs.
+- `npm run test:submission` passed against real local PostgreSQL, RabbitMQ, Notification Service, and Mailpit. It verified rejection without persistence, concurrent submissions (one 201/one 409), one initial history entry, no initial notification event, immutable resume/match/contact readback without upstream calls, seeker/company isolation, initial-history failure rollback, cover-letter persistence, and subsequent status email.
+- The existing status-notification outage/recovery integration command passed again with migration 002 applied. Its fixtures use distinct candidate/job pairs to respect the new uniqueness rule.
+- Upstream resume/job protocols were copied unchanged from their owning GitHub repositories. Resume is `main`; Job Posting is the documented `dev` contract. Provenance is in `proto/README.md`.
+- Submission integration uses four labelled contract stubs. A live run against teammates' running services and gateway/Supabase authentication is still required. No real email provider or hosted deployment was added.
+
+The submission command's original transcript is retained at `evidence/submission-integration.log`.

@@ -1,5 +1,5 @@
 
-> rolefit-application-service@0.1.0 test:integration
+> rolefit-application-service@0.2.0 test:integration
 > tsx scripts/integration.ts
 
 PASS identity, ownership, validation, missing IDs, no-op
@@ -8,12 +8,12 @@ PASS transaction rollback on outbox failure
 PASS broker outage and recovery without lost status change
 PASS consumer outage and durable queue catch-up
 PASS event replay, unroutable publication rejection, dead-letter queue
-Notification 88fa542f-31af-4c40-8ffc-a767fea44db1: retry scheduled
-Notification 88fa542f-31af-4c40-8ffc-a767fea44db1: retry scheduled
-Notification 88fa542f-31af-4c40-8ffc-a767fea44db1: retry scheduled
-Notification 88fa542f-31af-4c40-8ffc-a767fea44db1: failed
-Notification 00646bfe-409c-4d59-9c42-a46cf86b3a38: failed
-Notification 1f567d4c-8163-473c-952e-d74d9d342739: SMTP accepted
+Notification fa4b4b37-325e-48f3-80f4-03bca43e9101: retry scheduled
+Notification fa4b4b37-325e-48f3-80f4-03bca43e9101: retry scheduled
+Notification fa4b4b37-325e-48f3-80f4-03bca43e9101: retry scheduled
+Notification fa4b4b37-325e-48f3-80f4-03bca43e9101: failed
+Notification 626f718b-15fa-40fa-9557-562d65365f1b: failed
+Notification a26ac11c-09c7-4225-879f-69c9e7b68e37: SMTP accepted
 PASS durable retry exhaustion, permanent rejection, expired lease recovery
 PASS actual SMTP outage, durable retry, and email delivery after recovery
 PASS database outage readiness and failed write

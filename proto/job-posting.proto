@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package rolefit.jobposting.v1;
+
+// API of the Job Posting Service (owner of the job documents).
+// Callers: the web frontend's Next.js server (recruiter CRUD, seeker reads) and,
+// later, Job Discovery / Resume Preparation / Application services.
+// Nobody else may query the Job Posting MongoDB database.
+//
+// Identity (mock auth): writes need gRPC metadata `x-user-id` and `x-company-id`.
+// Validation errors carry trailing metadata `x-validation-errors`:
+// a JSON array of { "field": string, "message": string }.
+//
+// Never renumber or reuse field numbers.
+service JobPostingService {
+  rpc CreateJob (CreateJobRequest) returns (JobResponse);
+  rpc GetJob (GetJobRequest) returns (JobResponse);
+  rpc ListJobs (ListJobsRequest) returns (ListJobsResponse);
+  rpc UpdateJob (UpdateJobRequest) returns (JobResponse);
+  rpc DeleteJob (JobIdRequest) returns (DeleteJobResponse);
+  rpc PublishJob (JobIdRequest) returns (JobResponse);
+  rpc CloseJob (JobIdRequest) returns (JobResponse);
+  rpc ReopenJob (JobIdRequest) returns (JobResponse);
+  rpc AttachResumeTemplate (AttachResumeTemplateRequest) returns (ResumeTemplateResponse);
+  rpc GetResumeTemplate (GetResumeTemplateRequest) returns (ResumeTemplateResponse);
+  rpc DeleteResumeTemplate (JobIdRequest) returns (DeleteResumeTemplateResponse);
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_DRAFT = 1;
+  JOB_STATUS_OPEN = 2;
+  JOB_STATUS_CLOSED = 3;
+}
+
+enum SkillLevel {
+  SKILL_LEVEL_UNSPECIFIED = 0;
+  SKILL_LEVEL_BASIC = 1;
+  SKILL_LEVEL_INTERMEDIATE = 2;
+  SKILL_LEVEL_ADVANCED = 3;
+}
+
+enum EmploymentType {
+  EMPLOYMENT_TYPE_UNSPECIFIED = 0;
+  EMPLOYMENT_TYPE_FULL_TIME = 1;
+  EMPLOYMENT_TYPE_PART_TIME = 2;
+  EMPLOYMENT_TYPE_INTERNSHIP = 3;
+  EMPLOYMENT_TYPE_CONTRACT = 4;
+}
+
+enum WorkArrangement {
+  WORK_ARRANGEMENT_UNSPECIFIED = 0;
+  WORK_ARRANGEMENT_ONSITE = 1;
+  WORK_ARRANGEMENT_HYBRID = 2;
+  WORK_ARRANGEMENT_REMOTE = 3;
+}
+
+enum EducationLevel {
+  EDUCATION_LEVEL_UNSPECIFIED = 0;
+  EDUCATION_LEVEL_NONE = 1;
+  EDUCATION_LEVEL_HIGH_SCHOOL = 2;
+  EDUCATION_LEVEL_DIPLOMA = 3;
+  EDUCATION_LEVEL_BACHELOR = 4;
+  EDUCATION_LEVEL_MASTER = 5;
+  EDUCATION_LEVEL_DOCTORATE = 6;
+}
+
+message RequiredSkill {
+  string name = 1;
+  SkillLevel level = 2;
+  int32 minimum_years = 3;
+}
+
+message PreferredSkill {
+  string name = 1;
+  SkillLevel level = 2;
+}
+
+message Requirements {
+  repeated RequiredSkill required_skills = 1;
+  repeated PreferredSkill preferred_skills = 2;
+  int32 minimum_experience_years = 3;
+  EducationLevel education_level = 4;
+  repeated string accepted_fields = 5;
+}
+
+message Location {
+  string country = 1;
+  string province = 2;
+  string district = 3;
+}
+
+message Salary {
+  optional double minimum = 1;
+  optional double maximum = 2;
+  string currency = 3;
+  bool visible = 4;
+}
+
+message ApplicationSettings {
+  string application_deadline = 1;  // ISO-8601, "" = unset
+  int32 positions_available = 2;
+  string resume_template_id = 3;    // "" = none
+  bool require_cover_letter = 4;
+}
+
+message Job {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  JobStatus status = 4;
+  string created_at = 5;            // ISO-8601
+  string updated_at = 6;            // ISO-8601
+  string recruiter_id = 7;
+  string company_id = 8;
+  Requirements requirements = 9;
+  repeated string responsibilities = 10;
+  EmploymentType employment_type = 11;
+  WorkArrangement work_arrangement = 12;
+  Location location = 13;
+  Salary salary = 14;
+  ApplicationSettings application_settings = 15;
+  string published_at = 16;         // "" = never published
+}
+
+// Editable fields. UpdateJob replaces all of them (full replace, no field mask).
+message JobInput {
+  string title = 1;
+  string description = 2;
+  Requirements requirements = 3;
+  repeated string responsibilities = 4;
+  EmploymentType employment_type = 5;
+  WorkArrangement work_arrangement = 6;
+  Location location = 7;
+  Salary salary = 8;
+  string application_deadline = 9;
+  int32 positions_available = 10;   // 0 = default (1)
+  bool require_cover_letter = 11;
+}
+
+message CreateJobRequest {
+  JobInput job = 1;
+}
+
+message UpdateJobRequest {
+  string job_id = 1;
+  JobInput job = 2;
+}
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message JobIdRequest {
+  string job_id = 1;
+}
+
+message JobResponse {
+  Job job = 1;
+}
+
+message DeleteJobResponse {}
+
+// A DRAFT job is only returned to its own company (x-company-id).
+// Sorted by updated_at desc when company_id is set, else by published_at desc.
+message ListJobsRequest {
+  JobStatus status = 1;             // UNSPECIFIED = any
+  int32 page = 2;                   // 0 = 1
+  int32 limit = 3;                  // 0 = 20, max 100
+  string company_id = 4;
+  string query = 5;                 // matches title or required skill names
+}
+
+message ListJobsResponse {
+  repeated Job jobs = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+}
+
+message AttachResumeTemplateRequest {
+  string job_id = 1;
+  string file_name = 2;
+  string content_type = 3;          // application/pdf or DOCX
+  bytes content = 4;                // up to 2 MB
+}
+
+message GetResumeTemplateRequest {
+  string job_id = 1;
+  bool include_content = 2;
+}
+
+message ResumeTemplate {
+  string id = 1;
+  string job_id = 2;
+  string file_name = 3;
+  string content_type = 4;
+  int64 size_bytes = 5;
+  bytes content = 6;                // empty unless include_content
+  string created_at = 7;
+}
+
+message ResumeTemplateResponse {
+  ResumeTemplate template = 1;
+}
+
+message DeleteResumeTemplateResponse {}

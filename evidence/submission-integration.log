@@ -1,0 +1,12 @@
+
+> rolefit-application-service@0.2.0 test:submission
+> tsx scripts/submission-integration.ts
+
+PASS rejection and dependency failures create no application
+PASS concurrent submission: one committed application/history, one 409, no initial notification
+PASS immutable snapshot readback, seeker/company isolation, no upstream calls on reads
+Application operation failed
+PASS initial-history failure rolls back application insertion
+PASS cover-letter requirement and persistence
+PASS submitted application -> later status change -> real RabbitMQ -> Notification -> Mailpit email
+ALL SUBMISSION INTEGRATION CHECKS PASSED (real PostgreSQL/broker/email; contract-stub upstreams; gateway/JWT not exercised)
