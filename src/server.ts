@@ -1,0 +1,44 @@
+import { setTimeout as delay } from "node:timers/promises";
+import { createPool, integer } from "./config";
+import { Broker } from "./broker";
+import { Repository } from "./repository";
+import { createApp } from "./app";
+import { publishNext } from "./outbox";
+
+const pool = createPool();
+const broker = new Broker(
+  process.env.RABBITMQ_URL || "amqp://rolefit:rolefit-local@localhost:5672",
+);
+let stopping = false;
+const server = createApp(new Repository(pool), async () => {
+  let database = true;
+  try {
+    await pool.query("SELECT 1");
+  } catch {
+    database = false;
+  }
+  return { database, broker: broker.ready };
+}).listen(integer("PORT", 3004), process.env.HOST || "0.0.0.0", () =>
+  console.log("Application HTTP listening"),
+);
+broker.start();
+const worker = (async () => {
+  while (!stopping) {
+    try {
+      if (await publishNext(pool, broker)) continue;
+    } catch {
+      console.error("Outbox pending; will retry");
+    }
+    await delay(500);
+  }
+})();
+async function stop() {
+  if (stopping) return;
+  stopping = true;
+  server.close();
+  await broker.stop();
+  await worker;
+  await pool.end();
+}
+process.on("SIGTERM", () => void stop());
+process.on("SIGINT", () => void stop());

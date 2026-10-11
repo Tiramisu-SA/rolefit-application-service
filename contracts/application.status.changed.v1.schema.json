@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rolefit.local/contracts/application.status.changed.v1.json",
+  "title": "ApplicationStatusChangedV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "schemaVersion",
+    "eventType",
+    "occurredAt",
+    "applicationId",
+    "jobId",
+    "candidateId",
+    "recipient",
+    "jobTitle",
+    "previousStatus",
+    "newStatus"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "eventType": {
+      "const": "application.status.changed.v1"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "applicationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "jobId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "candidateId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "recipient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "email"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        }
+      }
+    },
+    "jobTitle": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "previousStatus": {
+      "enum": ["Submitted", "Under review", "Interview", "Offer", "Rejected"]
+    },
+    "newStatus": {
+      "enum": ["Submitted", "Under review", "Interview", "Offer", "Rejected"]
+    }
+  }
+}

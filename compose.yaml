@@ -1,0 +1,82 @@
+name: rolefit-status
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres-local
+    ports: ["127.0.0.1:5433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/init.sql:/docker-entrypoint-initdb.d/001-services.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  rabbitmq:
+    image: rabbitmq:4.2-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: rolefit
+      RABBITMQ_DEFAULT_PASS: rolefit-local
+    ports: ["127.0.0.1:5672:5672", "127.0.0.1:15672:15672"]
+    volumes: ["rabbitdata:/var/lib/rabbitmq"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["127.0.0.1:1025:1025", "127.0.0.1:8025:8025"]
+    environment:
+      MP_DATABASE: /data/mailpit.db
+    volumes: ["maildata:/data"]
+  application:
+    build: .
+    environment:
+      PORT: 3004
+      DATABASE_URL: postgresql://application:application-local@postgres:5432/application
+      RABBITMQ_URL: amqp://rolefit:rolefit-local@rabbitmq:5672
+    ports: ["127.0.0.1:3004:3004"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3004/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  notification:
+    build: ../rolefit-notification-service
+    environment:
+      PORT: 3005
+      DATABASE_URL: postgresql://notification:notification-local@postgres:5432/notification
+      RABBITMQ_URL: amqp://rolefit:rolefit-local@rabbitmq:5672
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+    ports: ["127.0.0.1:3005:3005"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      mailpit: { condition: service_started }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3005/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+volumes:
+  pgdata:
+  rabbitdata:
+  maildata:

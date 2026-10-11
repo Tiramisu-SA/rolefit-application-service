@@ -1,0 +1,790 @@
+{
+  "openapi": "3.0.3",
+  "info":
+    {
+      "title": "RoleFit Application Service",
+      "version": "0.1.0",
+      "description": "Internal service behind an authenticating gateway. Trusted identity headers are not public authentication credentials. Application submission is not implemented.",
+    },
+  "servers":
+    [
+      {
+        "url": "http://localhost:3004",
+        "description": "Local internal testing only",
+      },
+      {
+        "url": "http://localhost:8080",
+        "description": "Gateway after owner integration",
+      },
+    ],
+  "paths":
+    {
+      "/api/applications/mine":
+        {
+          "get":
+            {
+              "operationId": "listMyApplications",
+              "description": "Seekers only; reads applications owned by X-User-Id.",
+              "parameters":
+                [
+                  {
+                    "name": "X-User-Id",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" },
+                    "description": "Verified JWT subject, injected by the gateway",
+                  },
+                  {
+                    "name": "X-User-Role",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" },
+                    "description": "Verified app_metadata.role: seeker or recruiter",
+                  },
+                  {
+                    "name": "X-Company-Id",
+                    "in": "header",
+                    "required": false,
+                    "schema": { "type": "string" },
+                    "description": "Required for every recruiter request; trusted company identity, never client input",
+                  },
+                ],
+              "responses":
+                {
+                  "200":
+                    {
+                      "description": "Success",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                {
+                                  "$ref": "#/components/schemas/ApplicationList",
+                                },
+                            },
+                        },
+                    },
+                  "400":
+                    {
+                      "description": "Invalid request",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "401":
+                    {
+                      "description": "Missing verified identity",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "403":
+                    {
+                      "description": "Forbidden",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "404":
+                    {
+                      "description": "Application or route not found",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "409":
+                    {
+                      "description": "Stored notification data is invalid",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "503":
+                    {
+                      "description": "Storage unavailable",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+      "/api/applications":
+        {
+          "get":
+            {
+              "operationId": "listApplicantsForJob",
+              "description": "Recruiters only; filters by jobId and verified company. Empty list for unknown/unowned jobs; no cross-service job lookup.",
+              "parameters":
+                [
+                  {
+                    "name": "X-User-Id",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" },
+                    "description": "Verified JWT subject, injected by the gateway",
+                  },
+                  {
+                    "name": "X-User-Role",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" },
+                    "description": "Verified app_metadata.role: seeker or recruiter",
+                  },
+                  {
+                    "name": "X-Company-Id",
+                    "in": "header",
+                    "required": false,
+                    "schema": { "type": "string" },
+                    "description": "Required for every recruiter request; trusted company identity, never client input",
+                  },
+                  {
+                    "name": "jobId",
+                    "in": "query",
+                    "required": true,
+                    "schema":
+                      { "type": "string", "minLength": 1, "maxLength": 200 },
+                  },
+                ],
+              "responses":
+                {
+                  "200":
+                    {
+                      "description": "Success",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                {
+                                  "$ref": "#/components/schemas/ApplicationList",
+                                },
+                            },
+                        },
+                    },
+                  "400":
+                    {
+                      "description": "Invalid request",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "401":
+                    {
+                      "description": "Missing verified identity",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "403":
+                    {
+                      "description": "Forbidden",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "404":
+                    {
+                      "description": "Application or route not found",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "409":
+                    {
+                      "description": "Stored notification data is invalid",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "503":
+                    {
+                      "description": "Storage unavailable",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+      "/api/applications/{applicationId}":
+        {
+          "get":
+            {
+              "operationId": "getApplication",
+              "description": "Seeker owner or recruiter from the owning company.",
+              "parameters":
+                [
+                  {
+                    "name": "X-User-Id",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" },
+                    "description": "Verified JWT subject, injected by the gateway",
+                  },
+                  {
+                    "name": "X-User-Role",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" },
+                    "description": "Verified app_metadata.role: seeker or recruiter",
+                  },
+                  {
+                    "name": "X-Company-Id",
+                    "in": "header",
+                    "required": false,
+                    "schema": { "type": "string" },
+                    "description": "Required for every recruiter request; trusted company identity, never client input",
+                  },
+                  {
+                    "name": "applicationId",
+                    "in": "path",
+                    "required": true,
+                    "schema": { "type": "string" },
+                  },
+                ],
+              "responses":
+                {
+                  "200":
+                    {
+                      "description": "Success",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                {
+                                  "$ref": "#/components/schemas/ApplicationResponse",
+                                },
+                            },
+                        },
+                    },
+                  "400":
+                    {
+                      "description": "Invalid request",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "401":
+                    {
+                      "description": "Missing verified identity",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "403":
+                    {
+                      "description": "Forbidden",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "404":
+                    {
+                      "description": "Application or route not found",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "409":
+                    {
+                      "description": "Stored notification data is invalid",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "503":
+                    {
+                      "description": "Storage unavailable",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+      "/api/applications/{applicationId}/status":
+        {
+          "patch":
+            {
+              "operationId": "updateApplicationStatus",
+              "description": "Recruiters from the owning company only. Same status is a no-op; all five defined statuses are allowed. Queued means persisted in the outbox, not SMTP delivered.",
+              "parameters":
+                [
+                  {
+                    "name": "X-User-Id",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" },
+                    "description": "Verified JWT subject, injected by the gateway",
+                  },
+                  {
+                    "name": "X-User-Role",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" },
+                    "description": "Verified app_metadata.role: seeker or recruiter",
+                  },
+                  {
+                    "name": "X-Company-Id",
+                    "in": "header",
+                    "required": false,
+                    "schema": { "type": "string" },
+                    "description": "Required for every recruiter request; trusted company identity, never client input",
+                  },
+                  {
+                    "name": "applicationId",
+                    "in": "path",
+                    "required": true,
+                    "schema": { "type": "string" },
+                  },
+                ],
+              "responses":
+                {
+                  "200":
+                    {
+                      "description": "Success",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                {
+                                  "$ref": "#/components/schemas/StatusResponse",
+                                },
+                            },
+                        },
+                    },
+                  "400":
+                    {
+                      "description": "Invalid request",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "401":
+                    {
+                      "description": "Missing verified identity",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "403":
+                    {
+                      "description": "Forbidden",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "404":
+                    {
+                      "description": "Application or route not found",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "409":
+                    {
+                      "description": "Stored notification data is invalid",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                  "503":
+                    {
+                      "description": "Storage unavailable",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Error" },
+                            },
+                        },
+                    },
+                },
+              "requestBody":
+                {
+                  "required": true,
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            { "$ref": "#/components/schemas/StatusUpdate" },
+                        },
+                    },
+                },
+            },
+        },
+      "/health":
+        {
+          "get":
+            {
+              "description": "Liveness",
+              "responses":
+                {
+                  "200":
+                    {
+                      "description": "Success",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Health" },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+      "/ready":
+        {
+          "get":
+            {
+              "description": "Database readiness; RabbitMQ outage reports degraded with HTTP 200.",
+              "responses":
+                {
+                  "200":
+                    {
+                      "description": "Success",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Health" },
+                            },
+                        },
+                    },
+                  "503":
+                    {
+                      "description": "Database unavailable",
+                      "content":
+                        {
+                          "application/json":
+                            {
+                              "schema":
+                                { "$ref": "#/components/schemas/Health" },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+  "components":
+    {
+      "schemas":
+        {
+          "Error":
+            {
+              "type": "object",
+              "required": ["error"],
+              "properties":
+                {
+                  "error":
+                    {
+                      "type": "object",
+                      "required": ["code", "message"],
+                      "properties":
+                        {
+                          "code": { "type": "string" },
+                          "message": { "type": "string" },
+                        },
+                    },
+                },
+            },
+          "Health":
+            {
+              "type": "object",
+              "required": ["status"],
+              "properties":
+                {
+                  "status": { "type": "string" },
+                  "database": { "type": "boolean" },
+                  "broker": { "type": "boolean" },
+                  "service": { "type": "string" },
+                },
+            },
+          "StatusUpdate":
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status"],
+              "properties":
+                {
+                  "status":
+                    {
+                      "type": "string",
+                      "enum":
+                        [
+                          "Submitted",
+                          "Under review",
+                          "Interview",
+                          "Offer",
+                          "Rejected",
+                        ],
+                    },
+                  "note": { "type": "string", "maxLength": 2000 },
+                },
+            },
+          "Candidate":
+            {
+              "type": "object",
+              "required": ["id", "name", "email"],
+              "properties":
+                {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "email": { "type": "string", "format": "email" },
+                },
+            },
+          "JobSnapshot":
+            {
+              "type": "object",
+              "required": ["id", "title", "companyId"],
+              "properties":
+                {
+                  "id": { "type": "string" },
+                  "title": { "type": "string" },
+                  "companyId": { "type": "string" },
+                },
+            },
+          "HistoryEntry":
+            {
+              "type": "object",
+              "required": ["status", "at", "changedBy", "note"],
+              "properties":
+                {
+                  "status":
+                    {
+                      "type": "string",
+                      "enum":
+                        [
+                          "Submitted",
+                          "Under review",
+                          "Interview",
+                          "Offer",
+                          "Rejected",
+                        ],
+                    },
+                  "at": { "type": "string", "format": "date-time" },
+                  "changedBy": { "type": "string" },
+                  "note": { "type": "string", "nullable": true },
+                },
+            },
+          "Application":
+            {
+              "type": "object",
+              "required":
+                [
+                  "id",
+                  "jobId",
+                  "companyId",
+                  "candidateId",
+                  "candidate",
+                  "jobSnapshot",
+                  "resumeReference",
+                  "matchSnapshot",
+                  "status",
+                  "submittedAt",
+                  "updatedAt",
+                  "history",
+                ],
+              "properties":
+                {
+                  "id": { "type": "string" },
+                  "jobId": { "type": "string" },
+                  "companyId": { "type": "string" },
+                  "candidateId": { "type": "string" },
+                  "candidate": { "$ref": "#/components/schemas/Candidate" },
+                  "jobSnapshot": { "$ref": "#/components/schemas/JobSnapshot" },
+                  "resumeReference":
+                    {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true,
+                      "description": "Owned snapshot/reference supplied when an application is created; null in local fixtures.",
+                    },
+                  "matchSnapshot":
+                    {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true,
+                      "description": "Supplied submission-time snapshot; no live Job Discovery call.",
+                    },
+                  "status":
+                    {
+                      "type": "string",
+                      "enum":
+                        [
+                          "Submitted",
+                          "Under review",
+                          "Interview",
+                          "Offer",
+                          "Rejected",
+                        ],
+                    },
+                  "submittedAt": { "type": "string", "format": "date-time" },
+                  "updatedAt": { "type": "string", "format": "date-time" },
+                  "history":
+                    {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/HistoryEntry" },
+                    },
+                },
+            },
+          "ApplicationList":
+            {
+              "type": "object",
+              "required": ["applications"],
+              "properties":
+                {
+                  "applications":
+                    {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Application" },
+                    },
+                },
+            },
+          "ApplicationResponse":
+            {
+              "type": "object",
+              "required": ["application"],
+              "properties":
+                {
+                  "application": { "$ref": "#/components/schemas/Application" },
+                },
+            },
+          "StatusResponse":
+            {
+              "type": "object",
+              "required": ["application", "notificationQueued"],
+              "properties":
+                {
+                  "application": { "$ref": "#/components/schemas/Application" },
+                  "notificationQueued": { "type": "boolean" },
+                },
+            },
+        },
+    },
+}
