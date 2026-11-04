@@ -6,6 +6,7 @@ import type {
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { type Status, type StatusEvent, validateEvent } from "./event";
+import { currentRequestId } from "./request-context";
 
 export class AppError extends Error {
   constructor(
@@ -258,8 +259,8 @@ export class Repository implements ApplicationStore {
         [id, status, at, caller.userId, note || null],
       );
       await client.query(
-        "INSERT INTO notification_outbox(event_id,application_id,payload) VALUES ($1,$2,$3)",
-        [event.eventId, id, event],
+        "INSERT INTO notification_outbox(event_id,application_id,payload,request_id) VALUES ($1,$2,$3,$4)",
+        [event.eventId, id, event, currentRequestId() ?? null],
       );
       const application = await this.hydrate(updated.rows[0], client);
       await client.query("COMMIT");

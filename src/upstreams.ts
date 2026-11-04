@@ -3,7 +3,9 @@ import { loadSync } from "@grpc/proto-loader";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { integer } from "./config";
+import { logger } from "./logger";
 import { AppError, type Caller } from "./repository";
+import { currentRequestId, REQUEST_ID_KEY } from "./request-context";
 import {
   upstreamInvalid,
   type ApprovedResume,
@@ -19,6 +21,12 @@ export class UpstreamUnavailableError extends AppError {
   constructor(source: string) {
     super(503, "SERVICE_UNAVAILABLE", `${source} is unavailable or timed out`);
   }
+}
+function logUnavailable(source: string, requestId?: string): void {
+  logger.error(`${source} is unavailable or timed out`, {
+    requestId,
+    upstream: source,
+  });
 }
 type Message = Record<string, any>;
 export interface SourceConfig {
@@ -123,6 +131,9 @@ export class UpstreamClients implements SubmissionSources {
     metadata.set("x-user-id", caller.userId);
     metadata.set("x-user-role", "seeker");
     metadata.set("authorization", authorization);
+    // Read now: the callback below may run outside the request's async context.
+    const requestId = currentRequestId();
+    if (requestId) metadata.set(REQUEST_ID_KEY, requestId);
     // Never forward a seeker-supplied company or any arbitrary request header.
     return new Promise((resolve, reject) => {
       const invoke = (client as unknown as Record<string, Function>)[
@@ -138,8 +149,10 @@ export class UpstreamClients implements SubmissionSources {
             error.code === grpc.status.DEADLINE_EXCEEDED ||
             error.code === grpc.status.UNAVAILABLE ||
             error.code === grpc.status.CANCELLED
-          )
+          ) {
+            logUnavailable(source, requestId);
             return reject(new UpstreamUnavailableError(source));
+          }
           if (error.code === grpc.status.UNAUTHENTICATED)
             return reject(
               new AppError(
@@ -274,6 +287,7 @@ export class UpstreamClients implements SubmissionSources {
     authorization: string,
     source: string,
   ): Promise<Message> {
+    const requestId = currentRequestId();
     try {
       const response = await fetch(new URL(path, origin), {
         headers: {
@@ -281,6 +295,7 @@ export class UpstreamClients implements SubmissionSources {
           "X-User-Role": "seeker",
           Authorization: authorization,
           Accept: "application/json",
+          ...(requestId ? { "X-Request-Id": requestId } : {}),
         },
         signal: AbortSignal.timeout(this.config.timeoutMs),
         redirect: "manual",
@@ -378,8 +393,10 @@ export class UpstreamClients implements SubmissionSources {
       if (
         ["AbortError", "TimeoutError"].includes(failure.name ?? "") ||
         codes.some((code) => code && connectionCodes.includes(code))
-      )
+      ) {
+        logUnavailable(source, requestId);
         throw new UpstreamUnavailableError(source);
+      }
       throw new AppError(
         502,
         "UPSTREAM_ERROR",

@@ -54,6 +54,8 @@ Status, history, and event are committed in one PostgreSQL transaction. A serial
 
 Logs contain event IDs and safe error categories, not tokens, connection strings, recipients, or raw provider responses.
 
+Logs are JSON, one object per line. Each carries the `requestId` from the gateway's `X-Request-Id` header, which is also sent to every upstream (HTTP header or gRPC `x-request-id` metadata). A status change stores the id in `notification_outbox.request_id`, and the worker publishes it as the AMQP correlation id, so one request can be followed into the Notification Service. The event payload and its contract are unchanged. `/health` and `/ready` are not logged.
+
 ## Hosted PostgreSQL later
 
 Provision a dedicated database/user for Application and a separate database/user for Notification. Configure `DATABASE_URL`, `DATABASE_SSL=true`, and, if required, `DATABASE_CA_FILE`. Certificate verification stays enabled. Use `npm run migrate` for each database. Migration versions are recorded and protected by an advisory lock. Moving existing local records requires a deliberate dump/restore; changing the URL alone does not copy data. No Supabase client or shared database access is needed.

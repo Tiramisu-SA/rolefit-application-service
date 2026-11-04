@@ -6,6 +6,8 @@ import express, {
 } from "express";
 import { AppError, type ApplicationStore, type Caller } from "./repository";
 import { STATUSES, type Status } from "./event";
+import { logger } from "./logger";
+import { requestContext } from "./request-context.middleware";
 
 function caller(req: Request): Caller {
   const userId = req.get("X-User-Id")?.trim();
@@ -34,7 +36,6 @@ export function createApp(
 ) {
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "16kb" }));
   app.get("/health", (_req, res) =>
     res.json({ status: "ok", service: "application" }),
   );
@@ -49,6 +50,10 @@ export function createApp(
       ...state,
     });
   });
+  // After the checks polled every few seconds, so they are not logged; before the
+  // body parser, so a malformed body is logged with its request id too.
+  app.use(requestContext);
+  app.use(express.json({ limit: "16kb" }));
   app.use("/api", (req, _res, next) => {
     try {
       resCaller(req, caller(req));
@@ -150,7 +155,7 @@ export function createApp(
       return;
     }
     // Database errors and timeouts never expose connection strings or raw SQL details.
-    console.error("Application operation failed");
+    logger.error("Application operation failed");
     res.status(503).json({
       error: {
         code: "SERVICE_UNAVAILABLE",

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createPool } from "./config";
+import { logger } from "./logger";
 import type { Pool } from "pg";
 
 export async function migrate(pool: Pool): Promise<void> {
@@ -45,9 +46,9 @@ export async function migrate(pool: Pool): Promise<void> {
 if (require.main === module) {
   const pool = createPool();
   migrate(pool)
-    .then(() => console.log("Migrations applied"))
+    .then(() => logger.info("Migrations applied"))
     .catch(() => {
-      console.error("Migration failed");
+      logger.error("Migration failed");
       process.exitCode = 1;
     })
     .finally(() => pool.end());

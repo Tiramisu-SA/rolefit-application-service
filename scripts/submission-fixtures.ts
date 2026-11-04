@@ -64,6 +64,7 @@ export async function startFixtures(candidateId: string, jobId: string) {
       role: string;
       authorization: string;
       companyId?: string;
+      requestId?: string;
     }[],
   };
   const servers: grpc.Server[] = [];
@@ -91,6 +92,7 @@ export async function startFixtures(candidateId: string, jobId: string) {
       role: String(call.metadata.get("x-user-role")[0] || ""),
       authorization: String(call.metadata.get("authorization")[0] || ""),
       companyId: call.metadata.get("x-company-id")[0] as string | undefined,
+      requestId: call.metadata.get("x-request-id")[0] as string | undefined,
     });
   const jobPort = await grpcServer("job-posting.proto", "jobposting", {
     GetJob(
@@ -154,6 +156,7 @@ export async function startFixtures(candidateId: string, jobId: string) {
       role: String(req.headers["x-user-role"] || ""),
       authorization: String(req.headers.authorization || ""),
       companyId: req.headers["x-company-id"] as string | undefined,
+      requestId: req.headers["x-request-id"] as string | undefined,
     });
     const send = () => {
       res.setHeader("Content-Type", "application/json");
