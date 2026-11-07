@@ -14,6 +14,11 @@ service ResumePreparationService {
   // FAILED_PRECONDITION: a draft exists but the seeker has not approved it.
   // INVALID_ARGUMENT: candidate_id is not a UUID or job_id is malformed.
   rpc GetApprovedResume (GetApprovedResumeRequest) returns (GetApprovedResumeResponse);
+
+  // Every draft (approved or not) for these jobs. Used by the Application
+  // Service to send deadline reminders (FR-17).
+  // INVALID_ARGUMENT: more than 100 job ids, or a malformed job id.
+  rpc ListDraftsForJobs (ListDraftsForJobsRequest) returns (ListDraftsForJobsResponse);
 }
 
 message GetApprovedResumeRequest {
@@ -56,4 +61,17 @@ message ResumeBullet {
   string id = 1;
   string text = 2;
   bool tailored = 3;
+}
+
+message ListDraftsForJobsRequest {
+  repeated string job_ids = 1;
+}
+
+message DraftRef {
+  string candidate_id = 1;
+  string job_id = 2;
+}
+
+message ListDraftsForJobsResponse {
+  repeated DraftRef drafts = 1;
 }

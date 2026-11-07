@@ -10,7 +10,7 @@ import {
   DEV_FIXTURE_SET,
 } from "../src/development-fixtures";
 import { loadService } from "../src/upstreams";
-import { validateEvent } from "../src/event";
+import { validateEvent, validateReminderEvent } from "../src/event";
 async function main() {
   await SwaggerParser.validate("openapi.yaml");
   const doc = parse(readFileSync("openapi.yaml", "utf8"));
@@ -68,6 +68,20 @@ async function main() {
     })
   )
     throw new Error("Event example is invalid");
+  if (
+    !validateReminderEvent({
+      eventId: "7c3d1a52-3f0e-4c58-9a57-0d3b6f1e2a11",
+      schemaVersion: 1,
+      eventType: "job.deadline.reminder.v1",
+      occurredAt: "2026-10-11T00:00:00Z",
+      jobId: "sample-job",
+      candidateId: "sample-user",
+      recipient: { name: "Sample", email: "sample@example.test" },
+      jobTitle: "Sample job",
+      deadline: "2026-10-12T00:00:00Z",
+    })
+  )
+    throw new Error("Reminder event example is invalid");
   if (!validateResume || !validateMatch)
     throw new Error("Submission schemas did not compile");
   if (

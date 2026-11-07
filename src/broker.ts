@@ -33,6 +33,7 @@ export async function publishConfirmed(
   payload: Buffer,
   eventId: string,
   requestId?: string,
+  routingKey: string = KEY,
 ): Promise<void> {
   let returned = false;
   const onReturn = () => {
@@ -47,7 +48,7 @@ export async function publishConfirmed(
       );
       ch.publish(
         EXCHANGE,
-        KEY,
+        routingKey,
         payload,
         {
           persistent: true,
