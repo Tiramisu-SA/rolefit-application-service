@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package rolefit.candidateprofile.v1;
+
+// Internal API of the Candidate Profile Service.
+//
+// Other RoleFit services (e.g. Job Discovery) use this API to read candidate
+// data. They must NEVER connect to the Candidate Profile PostgreSQL database
+// directly. This service owns that data.
+//
+// Never renumber or reuse field numbers once other services depend on them.
+service CandidateProfileService {
+  rpc GetProfile (GetProfileRequest) returns (GetProfileResponse);
+}
+
+message GetProfileRequest {
+  // candidate_profile.id (UUID), which is also the owner's user id
+  string candidate_id = 1;
+}
+
+message GetProfileResponse {
+  CandidateProfile profile = 1;
+}
+
+message CandidateProfile {
+  string candidate_id = 1;
+  reserved 2, 3;
+  reserved "status", "user_id";  // the profile id is the user id
+  string name = 4;
+  string headline = 5;
+  string location = 6;
+  int32 total_experience_months = 7;
+  repeated Skill skills = 8;
+  repeated WorkExperience experience = 9;
+  repeated Education education = 10;
+  repeated Project projects = 11;
+  JobPreference preferences = 12;  // unset when the candidate has none
+  bool verified = 13;
+  string updated_at = 14;          // ISO-8601
+  string email = 15;  // contact email, "" when unknown. Internal: used by the Application Service for reminder emails (FR-17).
+}
+
+// proficiency_level: BASIC | INTERMEDIATE | ADVANCED, "" when unknown
+message Skill {
+  string name = 1;
+  string proficiency_level = 2;
+}
+
+// Dates are YYYY-MM-DD, "" when unknown.
+message WorkExperience {
+  string company_name = 1;
+  string job_title = 2;
+  string start_date = 3;
+  string end_date = 4;
+  bool is_current = 5;
+  repeated string bullets = 6;
+}
+
+// gpa is 0 when unknown.
+message Education {
+  string institution_name = 1;
+  string degree = 2;
+  string field_of_study = 3;
+  double gpa = 4;
+  string year = 5;
+}
+
+message Project {
+  string name = 1;
+  repeated string tech = 2;
+  repeated string bullets = 3;
+}
+
+// employment_types: FULL_TIME | PART_TIME | INTERNSHIP | CONTRACT
+// work_arrangements: ONSITE | HYBRID | REMOTE
+message JobPreference {
+  repeated string employment_types = 1;
+  repeated string preferred_roles = 2;
+  repeated string work_arrangements = 3;
+  repeated string preferred_locations = 4;
+  double minimum_salary = 5;
+  string salary_currency = 6;
+}

@@ -32,6 +32,7 @@ type Message = Record<string, any>;
 export interface SourceConfig {
   jobPostingTarget: string;
   resumeTarget: string;
+  candidateProfileTarget?: string;
   discoveryUrl: string;
   profileUrl: string;
   timeoutMs: number;
@@ -47,6 +48,8 @@ export function sourceConfig(): SourceConfig {
   const config: SourceConfig = {
     jobPostingTarget: process.env.JOB_POSTING_GRPC_URL || "localhost:50052",
     resumeTarget: process.env.RESUME_PREPARATION_GRPC_URL || "localhost:50053",
+    candidateProfileTarget:
+      process.env.CANDIDATE_PROFILE_GRPC_URL || "localhost:50051",
     discoveryUrl:
       process.env.JOB_DISCOVERY_SERVICE_URL || "http://localhost:3002",
     profileUrl:
@@ -73,7 +76,7 @@ export function sourceConfig(): SourceConfig {
 }
 export function loadService(
   file: string,
-  namespace: "jobposting" | "resumepreparation",
+  namespace: "jobposting" | "resumepreparation" | "candidateprofile",
 ): grpc.ServiceClientConstructor {
   const loaded = grpc.loadPackageDefinition(
     loadSync(join(process.cwd(), "proto", file), {
@@ -92,12 +95,15 @@ export function loadService(
   return loaded.rolefit[namespace].v1[
     namespace === "jobposting"
       ? "JobPostingService"
-      : "ResumePreparationService"
+      : namespace === "candidateprofile"
+        ? "CandidateProfileService"
+        : "ResumePreparationService"
   ];
 }
 export class UpstreamClients implements SubmissionSources {
   private readonly job: grpc.Client;
   private readonly resume: grpc.Client;
+  private readonly profile: grpc.Client;
   constructor(private readonly config: SourceConfig = sourceConfig()) {
     const credentials = config.grpcTls
       ? grpc.credentials.createSsl(
@@ -114,10 +120,19 @@ export class UpstreamClients implements SubmissionSources {
       "resume-preparation.proto",
       "resumepreparation",
     ))(config.resumeTarget, credentials, options);
+    this.profile = new (loadService(
+      "candidate-profile.proto",
+      "candidateprofile",
+    ))(
+      config.candidateProfileTarget ?? "localhost:50051",
+      credentials,
+      options,
+    );
   }
   close(): void {
     this.job.close();
     this.resume.close();
+    this.profile.close();
   }
   private rpc(
     client: grpc.Client,
@@ -329,27 +344,28 @@ export class UpstreamClients implements SubmissionSources {
       jobId: d.job_id,
     }));
   }
-  /**
-   * Candidate Profile only serves /api/profiles/me for the signed-in user, so the
-   * scheduler needs a credential that profile accepts for this candidate.
-   * REMINDER_PROFILE_AUTHORIZATION is that header value; unset means lookups fail
-   * (and the reminder is skipped and logged).
-   */
+  /** Recipient for a reminder, from Candidate Profile's internal gRPC. Throws if unknown or without email. */
   async getCandidateForReminder(
     candidateId: string,
   ): Promise<{ name: string; email: string }> {
-    const authorization = process.env.REMINDER_PROFILE_AUTHORIZATION;
-    if (!authorization)
-      throw new AppError(
-        503,
-        "SERVICE_UNAVAILABLE",
-        "No service credential for Candidate Profile lookups",
-      );
-    const candidate = await this.getCandidate(
-      { userId: candidateId, role: "seeker" },
-      authorization,
+    const result = await this.rpc(
+      this.profile,
+      "GetProfile",
+      { candidate_id: candidateId },
+      this.system,
+      "",
+      "Candidate Profile",
     );
-    return { name: candidate.name, email: candidate.email };
+    const profile = result?.profile;
+    if (!profile || typeof profile.name !== "string")
+      upstreamInvalid("Candidate Profile");
+    if (typeof profile.email !== "string" || !profile.email)
+      throw new AppError(
+        409,
+        "CANDIDATE_EMAIL_MISSING",
+        "Candidate has no contact email",
+      );
+    return { name: profile.name, email: profile.email };
   }
   private async http(
     origin: string,

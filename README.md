@@ -58,7 +58,7 @@ Logs are JSON, one object per line. Each carries the `requestId` from the gatewa
 
 ## Deadline reminders (FR-17)
 
-A scheduler inside the service (started in `src/server.ts`) checks hourly for prepared but unsent applications whose job deadline is within the window and queues a `job.deadline.reminder.v1` event through the outbox. Configure with `REMINDER_ENABLED` (default `true`), `REMINDER_INTERVAL_MS` (default `3600000`) and `REMINDER_WINDOW_HOURS` (default `48`). Candidate email is read from Candidate Profile using `REMINDER_PROFILE_AUTHORIZATION` (see `.env.example`); without it reminders are skipped and logged. Run one instance of the service, since the scheduler is not leader-elected (the unique `deadline_reminders` row still prevents duplicates).
+A scheduler inside the service (started in `src/server.ts`) checks hourly for prepared but unsent applications whose job deadline is within the window and queues a `job.deadline.reminder.v1` event through the outbox. Configure with `REMINDER_ENABLED` (default `true`), `REMINDER_INTERVAL_MS` (default `3600000`) and `REMINDER_WINDOW_HOURS` (default `48`). The recipient name and email come from Candidate Profile's internal gRPC `GetProfile` (`CANDIDATE_PROFILE_GRPC_URL`, default `localhost:50051`); a candidate with no email or no profile is skipped, logged, and retried on the next run. Run one instance of the service, since the scheduler is not leader-elected (the unique `deadline_reminders` row still prevents duplicates).
 
 ## Hosted PostgreSQL later
 
