@@ -280,6 +280,77 @@ export class UpstreamClients implements SubmissionSources {
       updatedAt: resume.updated_at,
     };
   }
+  /** Service-to-service calls made by the reminder scheduler, outside any user request. */
+  private readonly system: Caller = {
+    userId: "system:deadline-reminders",
+    role: "seeker",
+  };
+  async listPublishedJobs(): Promise<
+    Array<{ id: string; title: string; deadline?: string }>
+  > {
+    const jobs: Array<{ id: string; title: string; deadline?: string }> = [];
+    for (let page = 1; ; page++) {
+      const result = await this.rpc(
+        this.job,
+        "ListJobs",
+        { status: "JOB_STATUS_OPEN", page, limit: 100 },
+        this.system,
+        "",
+        "Job Posting",
+      );
+      const batch: Message[] = Array.isArray(result?.jobs) ? result.jobs : [];
+      for (const job of batch) {
+        if (typeof job.id !== "string" || typeof job.title !== "string")
+          upstreamInvalid("Job Posting");
+        jobs.push({
+          id: job.id,
+          title: job.title,
+          deadline: job.application_settings?.application_deadline || undefined,
+        });
+      }
+      if (batch.length < 100 || page * 100 >= Number(result?.total ?? 0)) break;
+    }
+    return jobs;
+  }
+  async listDraftsForJobs(
+    jobIds: string[],
+  ): Promise<Array<{ candidateId: string; jobId: string }>> {
+    const result = await this.rpc(
+      this.resume,
+      "ListDraftsForJobs",
+      { job_ids: jobIds },
+      this.system,
+      "",
+      "Resume Preparation",
+    );
+    if (!Array.isArray(result?.drafts)) upstreamInvalid("Resume Preparation");
+    return result.drafts.map((d: Message) => ({
+      candidateId: d.candidate_id,
+      jobId: d.job_id,
+    }));
+  }
+  /**
+   * Candidate Profile only serves /api/profiles/me for the signed-in user, so the
+   * scheduler needs a credential that profile accepts for this candidate.
+   * REMINDER_PROFILE_AUTHORIZATION is that header value; unset means lookups fail
+   * (and the reminder is skipped and logged).
+   */
+  async getCandidateForReminder(
+    candidateId: string,
+  ): Promise<{ name: string; email: string }> {
+    const authorization = process.env.REMINDER_PROFILE_AUTHORIZATION;
+    if (!authorization)
+      throw new AppError(
+        503,
+        "SERVICE_UNAVAILABLE",
+        "No service credential for Candidate Profile lookups",
+      );
+    const candidate = await this.getCandidate(
+      { userId: candidateId, role: "seeker" },
+      authorization,
+    );
+    return { name: candidate.name, email: candidate.email };
+  }
   private async http(
     origin: string,
     path: string,
