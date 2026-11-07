@@ -52,6 +52,14 @@ async function main() {
   );
   if (!mine.equals(consumer))
     throw new Error("Producer/consumer event contracts differ");
+  const mineReminder = readFileSync(
+    "contracts/job.deadline.reminder.v1.schema.json",
+  );
+  const consumerReminder = readFileSync(
+    "../rolefit-notification-service/contracts/job.deadline.reminder.v1.schema.json",
+  );
+  if (!mineReminder.equals(consumerReminder))
+    throw new Error("Producer/consumer reminder event contracts differ");
   if (
     !validateEvent({
       eventId: "26ec5af5-7cef-434b-9fe9-dc4f37e00455",
@@ -87,7 +95,11 @@ async function main() {
   if (
     !loadService("job-posting.proto", "jobposting").service.GetJob ||
     !loadService("resume-preparation.proto", "resumepreparation").service
-      .GetApprovedResume
+      .GetApprovedResume ||
+    !loadService("resume-preparation.proto", "resumepreparation").service
+      .ListDraftsForJobs ||
+    !loadService("candidate-profile.proto", "candidateprofile").service
+      .GetProfile
   )
     throw new Error("Required upstream RPC missing");
   console.log(
