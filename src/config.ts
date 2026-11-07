@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolConfig } from "pg";
+import { logger } from "./logger";
 
 export function integer(
   name: string,
@@ -46,6 +47,6 @@ export function databaseConfig(url = process.env.DATABASE_URL): PoolConfig {
 }
 export function createPool(url?: string): Pool {
   const pool = new Pool(databaseConfig(url));
-  pool.on("error", () => console.error("Database idle connection failed"));
+  pool.on("error", () => logger.error("Database idle connection failed"));
   return pool;
 }

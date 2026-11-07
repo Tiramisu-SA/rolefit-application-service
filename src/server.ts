@@ -7,6 +7,7 @@ import { developmentConfig, withDevelopmentSources } from "./development";
 import { UpstreamClients } from "./upstreams";
 import { createApp } from "./app";
 import { publishNext } from "./outbox";
+import { logger } from "./logger";
 
 // Validate dev-mode restrictions before opening database or broker connections.
 developmentConfig();
@@ -31,7 +32,7 @@ const server = createApp(
   },
   new SubmissionService(repository, sources),
 ).listen(integer("PORT", 3004), process.env.HOST || "0.0.0.0", () =>
-  console.log("Application HTTP listening"),
+  logger.info("Application HTTP listening"),
 );
 broker.start();
 const worker = (async () => {
@@ -39,7 +40,7 @@ const worker = (async () => {
     try {
       if (await publishNext(pool, broker)) continue;
     } catch {
-      console.error("Outbox pending; will retry");
+      logger.error("Outbox pending; will retry");
     }
     await delay(500);
   }

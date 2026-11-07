@@ -2,6 +2,7 @@ import { AppError, type Caller } from "./repository";
 import type { SubmissionDevelopment, SubmissionSources } from "./submission";
 import { developmentFixture, DEV_FIXTURE_SET } from "./development-fixtures";
 import { UpstreamUnavailableError } from "./upstreams";
+import { logger } from "./logger";
 
 export type UpstreamMode = "live" | "fallback" | "fixture";
 export type SourceName = keyof SubmissionDevelopment["sources"];
@@ -98,7 +99,7 @@ export function withDevelopmentSources(
           );
         development.fixtureSet = DEV_FIXTURE_SET;
         development.sources[source] = "fixture";
-        console.info(`Development fixture selected: ${source}`);
+        logger.info(`Development fixture selected: ${source}`);
         return sample();
       };
       return {
