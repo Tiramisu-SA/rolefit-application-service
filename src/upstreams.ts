@@ -180,7 +180,15 @@ export class UpstreamClients implements SubmissionSources {
             return reject(
               new AppError(403, "FORBIDDEN", `${source} denied access`),
             );
-          if (error.code === grpc.status.NOT_FOUND)
+          if (error.code === grpc.status.NOT_FOUND) {
+            if (source === "Candidate Profile")
+              return reject(
+                new AppError(
+                  404,
+                  "CANDIDATE_NOT_FOUND",
+                  "Candidate profile not found",
+                ),
+              );
             return reject(
               new AppError(
                 source === "Job Posting" ? 404 : 409,
@@ -192,6 +200,7 @@ export class UpstreamClients implements SubmissionSources {
                   : "Prepare and approve a resume before applying",
               ),
             );
+          }
           if (
             source === "Resume Preparation" &&
             error.code === grpc.status.FAILED_PRECONDITION

@@ -41,3 +41,12 @@ test("missing email or unknown profile throws so the pair is retried later", asy
     await assert.rejects(c.getCandidateForReminder("ghost"));
   });
 });
+
+test("unknown profile maps to CANDIDATE_NOT_FOUND, not a resume draft error", async () => {
+  await withClients(async (c) => {
+    await assert.rejects(
+      c.getCandidateForReminder("ghost"),
+      (e: any) => e.code === "CANDIDATE_NOT_FOUND",
+    );
+  });
+});
