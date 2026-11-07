@@ -25,7 +25,9 @@ export async function publishNext(
       Buffer.from(JSON.stringify(rows[0].payload)),
       rows[0].event_id,
       requestId,
-      rows[0].payload?.eventType,
+      typeof rows[0].payload?.eventType === "string"
+        ? rows[0].payload.eventType
+        : undefined,
     );
     await client.query(
       "UPDATE notification_outbox SET published_at=now() WHERE event_id=$1",

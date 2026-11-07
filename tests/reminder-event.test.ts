@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { validateReminderEvent } from "../src/event";
 import { publishNext } from "../src/outbox";
+import { KEY, QUEUE, REMINDER_KEY, topology } from "../src/broker";
 
 const reminder = () => ({
   eventId: randomUUID(),
@@ -84,4 +85,24 @@ test("the outbox routes events by their event type", async () => {
   });
   assert.equal(await publishNext(s.pool, s.broker), true);
   assert.deepEqual(s.keys, ["application.status.changed.v1"]);
+});
+
+test("topology binds the notification queue to status and reminder keys", async () => {
+  const binds: string[][] = [];
+  const ch = {
+    assertExchange: async () => {},
+    assertQueue: async () => {},
+    bindQueue: async (q: string, _e: string, k: string) => {
+      binds.push([q, k]);
+    },
+  };
+  await topology(ch as never);
+  assert.ok(binds.some(([q, k]) => q === QUEUE && k === KEY));
+  assert.ok(binds.some(([q, k]) => q === QUEUE && k === REMINDER_KEY));
+});
+
+test("a non-string event type falls back to the status key", async () => {
+  const o = fakeOutbox({ eventId: randomUUID(), eventType: 5 });
+  assert.equal(await publishNext(o.pool, o.broker), true);
+  assert.deepEqual(o.keys, [KEY]);
 });

@@ -8,6 +8,7 @@ import { logger } from "./logger";
 
 export const EXCHANGE = "rolefit.events";
 export const KEY = "application.status.changed.v1";
+export const REMINDER_KEY = "job.deadline.reminder.v1";
 export const QUEUE = "notification.application-status.v1";
 export const DEAD_EXCHANGE = "rolefit.deadletters";
 export const DEAD_QUEUE = "notification.invalid.v1";
@@ -25,6 +26,7 @@ export async function topology(ch: ConfirmChannel): Promise<void> {
     },
   });
   await ch.bindQueue(QUEUE, EXCHANGE, KEY);
+  await ch.bindQueue(QUEUE, EXCHANGE, REMINDER_KEY);
 }
 
 // One publish in flight per channel: basic.return always precedes its confirmation.
