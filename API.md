@@ -163,6 +163,10 @@ Illustrative payload:
 
 No resumes, match results, bearer tokens, or recruiter notes are published. Additional event properties are rejected. The outbox retries after broker recovery, so consumers must deduplicate `eventId`. Publisher confirmation means the broker accepted a routed message, not that an email was delivered.
 
+### Deadline reminder event
+
+Key `job.deadline.reminder.v1` (schema `contracts/job.deadline.reminder.v1.schema.json`), published through the same outbox. Once per hour (configurable) the service finds OPEN jobs whose `application_deadline` falls within the next 48 hours, asks Resume Preparation for candidates holding a draft for them (`ListDraftsForJobs`), and queues one reminder for each candidate who has neither applied nor been reminded. `deadline_reminders(candidate_id, job_id)` guarantees at most one reminder per pair. Payload fields: `eventId`, `schemaVersion`, `eventType`, `occurredAt`, `jobId`, `candidateId`, `recipient {name,email}`, `jobTitle`, `deadline`. Outbox rows for reminders have a NULL `application_id`.
+
 ## Local example
 
 Seed first with `docker compose exec application node dist/src/seed.js`, then:

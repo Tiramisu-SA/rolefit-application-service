@@ -50,3 +50,19 @@ export function createPool(url?: string): Pool {
   pool.on("error", () => logger.error("Database idle connection failed"));
   return pool;
 }
+
+export interface ReminderConfig {
+  enabled: boolean;
+  intervalMs: number;
+  windowHours: number;
+}
+export function reminderConfig(): ReminderConfig {
+  const raw = process.env.REMINDER_ENABLED;
+  if (raw && !["true", "false"].includes(raw))
+    throw new Error("Invalid REMINDER_ENABLED");
+  return {
+    enabled: raw !== "false",
+    intervalMs: integer("REMINDER_INTERVAL_MS", 3_600_000, 1000, 86_400_000),
+    windowHours: integer("REMINDER_WINDOW_HOURS", 48, 1, 720),
+  };
+}

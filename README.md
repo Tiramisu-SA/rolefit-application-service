@@ -56,6 +56,10 @@ Logs contain event IDs and safe error categories, not tokens, connection strings
 
 Logs are JSON, one object per line. Each carries the `requestId` from the gateway's `X-Request-Id` header, which is also sent to every upstream (HTTP header or gRPC `x-request-id` metadata). A status change stores the id in `notification_outbox.request_id`, and the worker publishes it as the AMQP correlation id, so one request can be followed into the Notification Service. The event payload and its contract are unchanged. `/health` and `/ready` are not logged.
 
+## Deadline reminders (FR-17)
+
+A scheduler inside the service (started in `src/server.ts`) checks hourly for prepared but unsent applications whose job deadline is within the window and queues a `job.deadline.reminder.v1` event through the outbox. Configure with `REMINDER_ENABLED` (default `true`), `REMINDER_INTERVAL_MS` (default `3600000`) and `REMINDER_WINDOW_HOURS` (default `48`). The recipient name and email come from Candidate Profile's internal gRPC `GetProfile` (`CANDIDATE_PROFILE_GRPC_URL`, default `localhost:50051`); a candidate with no email or no profile is skipped, logged, and retried on the next run. The standalone `compose.yaml` / `compose.dev.yaml` set `REMINDER_ENABLED: "false"` because reminders need the full stack (the gateway's `deploy` compose), where the default `true` applies. Run one instance of the service, since the scheduler is not leader-elected (the unique `deadline_reminders` row still prevents duplicates).
+
 ## Hosted PostgreSQL later
 
 Provision a dedicated database/user for Application and a separate database/user for Notification. Configure `DATABASE_URL`, `DATABASE_SSL=true`, and, if required, `DATABASE_CA_FILE`. Certificate verification stays enabled. Use `npm run migrate` for each database. Migration versions are recorded and protected by an advisory lock. Moving existing local records requires a deliberate dump/restore; changing the URL alone does not copy data. No Supabase client or shared database access is needed.

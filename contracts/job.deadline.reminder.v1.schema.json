@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rolefit.local/contracts/job.deadline.reminder.v1.json",
+  "title": "JobDeadlineReminderV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "schemaVersion",
+    "eventType",
+    "occurredAt",
+    "jobId",
+    "candidateId",
+    "recipient",
+    "jobTitle",
+    "deadline"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "eventType": {
+      "const": "job.deadline.reminder.v1"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "jobId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "candidateId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "recipient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "email"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        }
+      }
+    },
+    "jobTitle": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { createPool, integer } from "./config";
+import { createPool, integer, reminderConfig } from "./config";
 import { Broker } from "./broker";
 import { Repository } from "./repository";
 import { SubmissionService } from "./submission";
@@ -8,9 +8,11 @@ import { UpstreamClients } from "./upstreams";
 import { createApp } from "./app";
 import { publishNext } from "./outbox";
 import { logger } from "./logger";
+import { startReminderScheduler } from "./reminder";
 
 // Validate dev-mode restrictions before opening database or broker connections.
 developmentConfig();
+const reminders = reminderConfig();
 const clients = new UpstreamClients();
 const sources = withDevelopmentSources(clients);
 const pool = createPool();
@@ -45,9 +47,22 @@ const worker = (async () => {
     await delay(500);
   }
 })();
+const stopReminders = reminders.enabled
+  ? startReminderScheduler(
+      {
+        listPublishedJobs: () => clients.listPublishedJobs(),
+        listDraftsForJobs: (ids) => clients.listDraftsForJobs(ids),
+        hasAppliedOrReminded: (c, j) => repository.hasAppliedOrReminded(c, j),
+        getCandidate: (id) => clients.getCandidateForReminder(id),
+        recordReminder: (e) => repository.recordReminder(e),
+      },
+      reminders,
+    )
+  : () => {};
 async function stop() {
   if (stopping) return;
   stopping = true;
+  stopReminders();
   server.close();
   await broker.stop();
   await worker;

@@ -36,6 +36,9 @@ services:
     extra_hosts: ["host.docker.internal:host-gateway"]
     environment:
       PORT: 3004
+      # Reminders need Resume Preparation, Candidate Profile and Job Posting gRPC, i.e. the full stack
+      # (the gateway's deploy compose). This standalone compose has no such upstreams.
+      REMINDER_ENABLED: "false"
       JOB_POSTING_GRPC_URL: ${JOB_POSTING_GRPC_URL:-host.docker.internal:50052}
       RESUME_PREPARATION_GRPC_URL: ${RESUME_PREPARATION_GRPC_URL:-host.docker.internal:50053}
       JOB_DISCOVERY_SERVICE_URL: ${JOB_DISCOVERY_SERVICE_URL:-http://host.docker.internal:3002}

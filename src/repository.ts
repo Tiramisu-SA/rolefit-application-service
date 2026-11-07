@@ -5,7 +5,12 @@ import type {
 } from "./submission";
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import { type Status, type StatusEvent, validateEvent } from "./event";
+import {
+  type ReminderEvent,
+  type Status,
+  type StatusEvent,
+  validateEvent,
+} from "./event";
 import { currentRequestId } from "./request-context";
 
 export class AppError extends Error {
@@ -265,6 +270,42 @@ export class Repository implements ApplicationStore {
       const application = await this.hydrate(updated.rows[0], client);
       await client.query("COMMIT");
       return { application, notificationQueued: true };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  async hasAppliedOrReminded(
+    candidateId: string,
+    jobId: string,
+  ): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      "SELECT 1 FROM applications WHERE candidate_id=$1 AND job_id=$2 UNION ALL SELECT 1 FROM deadline_reminders WHERE candidate_id=$1 AND job_id=$2 LIMIT 1",
+      [candidateId, jobId],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+  /** Records the reminder and its outbox event atomically. False if already reminded. */
+  async recordReminder(event: ReminderEvent): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query(
+        "INSERT INTO deadline_reminders(candidate_id,job_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING 1",
+        [event.candidateId, event.jobId],
+      );
+      if (!inserted.rowCount) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      await client.query(
+        "INSERT INTO notification_outbox(event_id,application_id,payload,request_id) VALUES ($1,NULL,$2,NULL)",
+        [event.eventId, event],
+      );
+      await client.query("COMMIT");
+      return true;
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       throw error;

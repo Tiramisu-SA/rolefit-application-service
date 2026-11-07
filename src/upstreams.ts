@@ -32,6 +32,7 @@ type Message = Record<string, any>;
 export interface SourceConfig {
   jobPostingTarget: string;
   resumeTarget: string;
+  candidateProfileTarget?: string;
   discoveryUrl: string;
   profileUrl: string;
   timeoutMs: number;
@@ -47,6 +48,8 @@ export function sourceConfig(): SourceConfig {
   const config: SourceConfig = {
     jobPostingTarget: process.env.JOB_POSTING_GRPC_URL || "localhost:50052",
     resumeTarget: process.env.RESUME_PREPARATION_GRPC_URL || "localhost:50053",
+    candidateProfileTarget:
+      process.env.CANDIDATE_PROFILE_GRPC_URL || "localhost:50051",
     discoveryUrl:
       process.env.JOB_DISCOVERY_SERVICE_URL || "http://localhost:3002",
     profileUrl:
@@ -73,7 +76,7 @@ export function sourceConfig(): SourceConfig {
 }
 export function loadService(
   file: string,
-  namespace: "jobposting" | "resumepreparation",
+  namespace: "jobposting" | "resumepreparation" | "candidateprofile",
 ): grpc.ServiceClientConstructor {
   const loaded = grpc.loadPackageDefinition(
     loadSync(join(process.cwd(), "proto", file), {
@@ -92,12 +95,15 @@ export function loadService(
   return loaded.rolefit[namespace].v1[
     namespace === "jobposting"
       ? "JobPostingService"
-      : "ResumePreparationService"
+      : namespace === "candidateprofile"
+        ? "CandidateProfileService"
+        : "ResumePreparationService"
   ];
 }
 export class UpstreamClients implements SubmissionSources {
   private readonly job: grpc.Client;
   private readonly resume: grpc.Client;
+  private readonly profile: grpc.Client;
   constructor(private readonly config: SourceConfig = sourceConfig()) {
     const credentials = config.grpcTls
       ? grpc.credentials.createSsl(
@@ -114,10 +120,19 @@ export class UpstreamClients implements SubmissionSources {
       "resume-preparation.proto",
       "resumepreparation",
     ))(config.resumeTarget, credentials, options);
+    this.profile = new (loadService(
+      "candidate-profile.proto",
+      "candidateprofile",
+    ))(
+      config.candidateProfileTarget ?? "localhost:50051",
+      credentials,
+      options,
+    );
   }
   close(): void {
     this.job.close();
     this.resume.close();
+    this.profile.close();
   }
   private rpc(
     client: grpc.Client,
@@ -165,7 +180,15 @@ export class UpstreamClients implements SubmissionSources {
             return reject(
               new AppError(403, "FORBIDDEN", `${source} denied access`),
             );
-          if (error.code === grpc.status.NOT_FOUND)
+          if (error.code === grpc.status.NOT_FOUND) {
+            if (source === "Candidate Profile")
+              return reject(
+                new AppError(
+                  404,
+                  "CANDIDATE_NOT_FOUND",
+                  "Candidate profile not found",
+                ),
+              );
             return reject(
               new AppError(
                 source === "Job Posting" ? 404 : 409,
@@ -177,6 +200,7 @@ export class UpstreamClients implements SubmissionSources {
                   : "Prepare and approve a resume before applying",
               ),
             );
+          }
           if (
             source === "Resume Preparation" &&
             error.code === grpc.status.FAILED_PRECONDITION
@@ -279,6 +303,78 @@ export class UpstreamClients implements SubmissionSources {
       approvedAt: resume.approved_at,
       updatedAt: resume.updated_at,
     };
+  }
+  /** Service-to-service calls made by the reminder scheduler, outside any user request. */
+  private readonly system: Caller = {
+    userId: "system:deadline-reminders",
+    role: "seeker",
+  };
+  async listPublishedJobs(): Promise<
+    Array<{ id: string; title: string; deadline?: string }>
+  > {
+    const jobs: Array<{ id: string; title: string; deadline?: string }> = [];
+    for (let page = 1; ; page++) {
+      const result = await this.rpc(
+        this.job,
+        "ListJobs",
+        { status: "JOB_STATUS_OPEN", page, limit: 100 },
+        this.system,
+        "",
+        "Job Posting",
+      );
+      const batch: Message[] = Array.isArray(result?.jobs) ? result.jobs : [];
+      for (const job of batch) {
+        if (typeof job.id !== "string" || typeof job.title !== "string")
+          upstreamInvalid("Job Posting");
+        jobs.push({
+          id: job.id,
+          title: job.title,
+          deadline: job.application_settings?.application_deadline || undefined,
+        });
+      }
+      if (batch.length < 100 || page * 100 >= Number(result?.total ?? 0)) break;
+    }
+    return jobs;
+  }
+  async listDraftsForJobs(
+    jobIds: string[],
+  ): Promise<Array<{ candidateId: string; jobId: string }>> {
+    const result = await this.rpc(
+      this.resume,
+      "ListDraftsForJobs",
+      { job_ids: jobIds },
+      this.system,
+      "",
+      "Resume Preparation",
+    );
+    if (!Array.isArray(result?.drafts)) upstreamInvalid("Resume Preparation");
+    return result.drafts.map((d: Message) => ({
+      candidateId: d.candidate_id,
+      jobId: d.job_id,
+    }));
+  }
+  /** Recipient for a reminder, from Candidate Profile's internal gRPC. Throws if unknown or without email. */
+  async getCandidateForReminder(
+    candidateId: string,
+  ): Promise<{ name: string; email: string }> {
+    const result = await this.rpc(
+      this.profile,
+      "GetProfile",
+      { candidate_id: candidateId },
+      this.system,
+      "",
+      "Candidate Profile",
+    );
+    const profile = result?.profile;
+    if (!profile || typeof profile.name !== "string")
+      upstreamInvalid("Candidate Profile");
+    if (typeof profile.email !== "string" || !profile.email)
+      throw new AppError(
+        409,
+        "CANDIDATE_EMAIL_MISSING",
+        "Candidate has no contact email",
+      );
+    return { name: profile.name, email: profile.email };
   }
   private async http(
     origin: string,
