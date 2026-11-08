@@ -6,6 +6,7 @@ import {
   type ApplicationStore,
   type Caller,
 } from "./repository";
+import { parseResumeFile, type ResumeUpload } from "./resume-file";
 import resumeSchema from "../contracts/approved-resume.v1.schema.json";
 import matchSchema from "../contracts/match-result.v1.schema.json";
 
@@ -70,8 +71,10 @@ export interface SubmissionData {
     format: "company" | "personal";
     approvedAt: string;
     updatedAt: string;
-  };
-  resumeSnapshot: ApprovedResume;
+  } | null;
+  resumeSnapshot: ApprovedResume | null;
+  /** Set when the seeker uploaded their own file; the tailored fields are then null. */
+  resumeUpload: ResumeUpload | null;
   matchSnapshot: MatchResult & { summary: string; capturedAt: string };
   coverLetter: string | null;
 }
@@ -122,13 +125,14 @@ export function upstreamInvalid(source: string): never {
 export function parseSubmission(body: unknown): {
   jobId: string;
   coverLetter: string | null;
+  resumeFile: ResumeUpload | null;
 } {
   const value = body as Record<string, unknown> | null;
   if (
     !value ||
     typeof value !== "object" ||
     Array.isArray(value) ||
-    Object.keys(value).some((k) => !["jobId", "coverLetter"].includes(k)) ||
+    Object.keys(value).some((k) => !["jobId", "coverLetter", "resumeFile"].includes(k)) ||
     typeof value.jobId !== "string" ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(value.jobId) ||
     (value.coverLetter !== undefined &&
@@ -143,6 +147,8 @@ export function parseSubmission(body: unknown): {
   return {
     jobId: value.jobId,
     coverLetter: (value.coverLetter as string | undefined)?.trim() || null,
+    resumeFile:
+      value.resumeFile === undefined ? null : parseResumeFile(value.resumeFile),
   };
 }
 export class SubmissionService {
@@ -226,17 +232,21 @@ export class SubmissionService {
         "COVER_LETTER_REQUIRED",
         "This job requires a cover letter",
       );
-    const resume = await sources.getApprovedResume(
-      input.jobId,
-      caller,
-      authorization,
-    );
-    if (
-      !validateResume(resume) ||
-      resume.candidateId !== caller.userId ||
-      resume.jobId !== input.jobId
-    )
-      upstreamInvalid("Resume Preparation");
+    // An uploaded file replaces the AI-tailored resume, so no approved draft is needed.
+    let resume: ApprovedResume | null = null;
+    if (!input.resumeFile) {
+      resume = await sources.getApprovedResume(
+        input.jobId,
+        caller,
+        authorization,
+      );
+      if (
+        !validateResume(resume) ||
+        resume.candidateId !== caller.userId ||
+        resume.jobId !== input.jobId
+      )
+        upstreamInvalid("Resume Preparation");
+    }
     const match = await sources.getMatchResult(
       input.jobId,
       caller,
@@ -267,13 +277,16 @@ export class SubmissionService {
         companyId: job.companyId,
         candidate,
         jobSnapshot: { id: job.id, title: job.title, companyId: job.companyId },
-        resumeReference: {
-          draftId: resume.draftId,
-          format: resume.format,
-          approvedAt: resume.approvedAt,
-          updatedAt: resume.updatedAt,
-        },
+        resumeReference: resume
+          ? {
+              draftId: resume.draftId,
+              format: resume.format,
+              approvedAt: resume.approvedAt,
+              updatedAt: resume.updatedAt,
+            }
+          : null,
         resumeSnapshot: resume,
+        resumeUpload: input.resumeFile,
         matchSnapshot: {
           ...match,
           summary: match.explanation,

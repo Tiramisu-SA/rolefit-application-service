@@ -13,11 +13,16 @@ import {
 } from "./event";
 import { currentRequestId } from "./request-context";
 
+export interface FieldError {
+  field: string;
+  message: string;
+}
 export class AppError extends Error {
   constructor(
     public readonly httpStatus: number,
     public readonly code: string,
     message: string,
+    public readonly details?: FieldError[],
   ) {
     super(message);
   }
@@ -38,6 +43,8 @@ export interface Application {
   resumeReference: unknown;
   matchSnapshot: unknown;
   resumeSnapshot: ApprovedResume | null;
+  resumeSource: "tailored" | "uploaded";
+  resumeFile: { fileName: string; contentType: string; sizeBytes: number } | null;
   coverLetter: string | null;
   status: Status;
   submittedAt: string;
@@ -65,10 +72,17 @@ function authorize(
       "You do not have access to this application",
     );
 }
+export interface StoredResumeFile {
+  fileName: string;
+  contentType: string;
+  content: Buffer;
+}
 export interface ApplicationStore {
   hasApplication(jobId: string, candidateId: string): Promise<boolean>;
   submit(data: SubmissionData, caller: Caller): Promise<Application>;
   get(id: string, caller: Caller): Promise<Application>;
+  /** Same access rule as get(). RESUME_FILE_NOT_FOUND when nothing was uploaded. */
+  getResumeFile(id: string, caller: Caller): Promise<StoredResumeFile>;
   mine(caller: Caller): Promise<Application[]>;
   applicants(jobId: string, caller: Caller): Promise<Application[]>;
   update(
@@ -79,7 +93,10 @@ export interface ApplicationStore {
   ): Promise<{ application: Application; notificationQueued: boolean }>;
 }
 // Read status and history from the same PostgreSQL statement snapshot.
+// File bytes are never selected here, only metadata.
 const APPLICATION_READ = `SELECT applications.*,
+ (SELECT jsonb_build_object('fileName',f.file_name,'contentType',f.content_type,'sizeBytes',f.size_bytes)
+  FROM application_resume_files f WHERE f.application_id=applications.id) AS resume_file_meta,
  (SELECT COALESCE(jsonb_agg(to_jsonb(h) ORDER BY h.id),'[]'::jsonb)
   FROM application_status_history h WHERE h.application_id=applications.id) AS history_rows
  FROM applications`;
@@ -96,6 +113,20 @@ export class Repository implements ApplicationStore {
           "SELECT status,at,changed_by,note FROM application_status_history WHERE application_id=$1 ORDER BY id",
           [row.id],
         );
+    let resumeFile = row.resume_file_meta ?? null;
+    if (!("resume_file_meta" in row) && row.resume_source === "uploaded") {
+      const meta = await db.query(
+        "SELECT file_name,content_type,size_bytes FROM application_resume_files WHERE application_id=$1",
+        [row.id],
+      );
+      resumeFile = meta.rows[0]
+        ? {
+            fileName: meta.rows[0].file_name,
+            contentType: meta.rows[0].content_type,
+            sizeBytes: meta.rows[0].size_bytes,
+          }
+        : null;
+    }
     return {
       development: row.development ?? null,
       id: row.id,
@@ -107,6 +138,8 @@ export class Repository implements ApplicationStore {
       resumeReference: row.resume_reference,
       matchSnapshot: row.match_snapshot,
       resumeSnapshot: row.resume_snapshot ?? null,
+      resumeSource: row.resume_source ?? "tailored",
+      resumeFile,
       coverLetter: row.cover_letter ?? null,
       status: row.status,
       submittedAt: row.submitted_at.toISOString(),
@@ -139,8 +172,8 @@ export class Repository implements ApplicationStore {
       await client.query("BEGIN");
       const inserted = await client.query(
         `INSERT INTO applications(id,job_id,company_id,candidate_id,candidate,job_snapshot,resume_reference,
-          resume_snapshot,match_snapshot,cover_letter,development,status)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Submitted') RETURNING *`,
+          resume_snapshot,match_snapshot,cover_letter,development,resume_source,status)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Submitted') RETURNING *`,
         [
           `app_${randomUUID()}`,
           data.jobId,
@@ -153,9 +186,22 @@ export class Repository implements ApplicationStore {
           data.matchSnapshot,
           data.coverLetter,
           data.development,
+          data.resumeUpload ? "uploaded" : "tailored",
         ],
       );
       const row = inserted.rows[0];
+      if (data.resumeUpload)
+        await client.query(
+          `INSERT INTO application_resume_files(application_id,file_name,content_type,size_bytes,content)
+           VALUES($1,$2,$3,$4,$5)`,
+          [
+            row.id,
+            data.resumeUpload.fileName,
+            data.resumeUpload.contentType,
+            data.resumeUpload.content.length,
+            data.resumeUpload.content,
+          ],
+        );
       await client.query(
         "INSERT INTO application_status_history(application_id,status,at,changed_by,note) VALUES($1,'Submitted',$2,$3,NULL)",
         [row.id, row.submitted_at, caller.userId],
@@ -189,6 +235,30 @@ export class Repository implements ApplicationStore {
       throw new AppError(404, "APPLICATION_NOT_FOUND", "Application not found");
     authorize(caller, rows[0]);
     return this.hydrate(rows[0]);
+  }
+  async getResumeFile(id: string, caller: Caller): Promise<StoredResumeFile> {
+    const { rows } = await this.pool.query(
+      "SELECT id,company_id,candidate_id FROM applications WHERE id=$1",
+      [id],
+    );
+    if (!rows[0])
+      throw new AppError(404, "APPLICATION_NOT_FOUND", "Application not found");
+    authorize(caller, rows[0]);
+    const file = await this.pool.query(
+      "SELECT file_name,content_type,content FROM application_resume_files WHERE application_id=$1",
+      [id],
+    );
+    if (!file.rows[0])
+      throw new AppError(
+        404,
+        "RESUME_FILE_NOT_FOUND",
+        "This application has no uploaded resume file",
+      );
+    return {
+      fileName: file.rows[0].file_name,
+      contentType: file.rows[0].content_type,
+      content: file.rows[0].content,
+    };
   }
   async mine(caller: Caller): Promise<Application[]> {
     if (caller.role !== "seeker")

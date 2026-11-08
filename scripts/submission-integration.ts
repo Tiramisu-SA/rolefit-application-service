@@ -224,6 +224,102 @@ async function main() {
     ids.push(covered.id);
     assert.equal(covered.coverLetter, "Contract cover letter");
     console.log("PASS cover-letter requirement and persistence");
+    const uploadJob = `job_upload_${suffix}`;
+    resetJob(uploadJob);
+    fixtures.state.requireCoverLetter = false;
+    fixtures.state.resumeError = grpc.status.FAILED_PRECONDITION;
+    const pdfBytes = Buffer.concat([
+      Buffer.from("%PDF-1.7\n"),
+      Buffer.from([0, 255, 128, 10, 13]),
+      Buffer.alloc(2000, 9),
+    ]);
+    const uploaded = await submit({
+      jobId: uploadJob,
+      resumeFile: {
+        fileName: "Jane Doe.pdf",
+        contentType: "application/pdf",
+        contentBase64: pdfBytes.toString("base64"),
+      },
+    });
+    fixtures.state.resumeError = 0;
+    assert.equal(uploaded.status, 201);
+    const up = uploaded.body.application;
+    ids.push(up.id);
+    assert.equal(up.resumeSource, "uploaded");
+    assert.equal(up.resumeSnapshot, null);
+    assert.deepEqual(up.resumeFile, {
+      fileName: "Jane Doe.pdf",
+      contentType: "application/pdf",
+      sizeBytes: pdfBytes.length,
+    });
+    const stored = (
+      await pool.query(
+        "SELECT content,size_bytes FROM application_resume_files WHERE application_id=$1",
+        [up.id],
+      )
+    ).rows[0];
+    assert.ok(stored.content.equals(pdfBytes));
+    const download = async (hdrs: Record<string, string>) => {
+      const res = await fetch(
+        `${origin}/api/applications/${up.id}/resume-file`,
+        { headers: hdrs },
+      );
+      return { res, bytes: Buffer.from(await res.arrayBuffer()) };
+    };
+    const companyRecruiter = {
+      "X-User-Id": "upload-recruiter",
+      "X-User-Role": "recruiter",
+      "X-Company-Id": "co-contract",
+    };
+    const asApplicant = await download(headers);
+    assert.equal(asApplicant.res.status, 200);
+    assert.equal(
+      asApplicant.res.headers.get("content-type"),
+      "application/pdf",
+    );
+    assert.equal(
+      asApplicant.res.headers.get("content-disposition"),
+      "attachment; filename*=UTF-8''Jane%20Doe.pdf",
+    );
+    assert.ok(asApplicant.bytes.equals(pdfBytes));
+    const asRecruiter = await download(companyRecruiter);
+    assert.equal(asRecruiter.res.status, 200);
+    assert.ok(asRecruiter.bytes.equals(pdfBytes));
+    assert.equal(
+      (await download({ ...companyRecruiter, "X-Company-Id": "other-co" })).res
+        .status,
+      403,
+    );
+    assert.equal(
+      (await download({ ...headers, "X-User-Id": randomUUID() })).res.status,
+      403,
+    );
+    const mineText = await (
+      await fetch(origin + "/api/applications/mine", { headers })
+    ).text();
+    const applicantsText = await (
+      await fetch(`${origin}/api/applications?jobId=${uploadJob}`, {
+        headers: companyRecruiter,
+      })
+    ).text();
+    for (const text of [mineText, applicantsText]) {
+      assert.ok(!text.includes(pdfBytes.toString("base64").slice(0, 40)));
+      assert.ok(text.includes('"resumeSource":"uploaded"'));
+      assert.ok(text.includes('"sizeBytes":' + pdfBytes.length));
+      assert.ok(!text.includes("contentBase64"));
+    }
+    const tailoredFile = await fetch(
+      `${origin}/api/applications/${application.id}/resume-file`,
+      { headers },
+    );
+    assert.equal(tailoredFile.status, 404);
+    assert.equal(
+      (await tailoredFile.json()).error.code,
+      "RESUME_FILE_NOT_FOUND",
+    );
+    console.log(
+      "PASS uploaded resume: stored in Postgres, downloadable by applicant and company recruiter, 403 for others, lists carry metadata only",
+    );
     const changed = await request(
       `/api/applications/${application.id}/status`,
       { method: "PATCH", headers: recruiter, body: '{"status":"Interview"}' },
@@ -292,6 +388,10 @@ async function main() {
       [eventIds],
     );
     // Candidate UUID is unique to this run; clean up even if a response assertion failed before recording an ID.
+    await pool.query(
+      "DELETE FROM application_resume_files WHERE application_id IN (SELECT id FROM applications WHERE candidate_id=$1)",
+      [candidateId],
+    );
     await pool.query(
       "DELETE FROM notification_outbox WHERE application_id IN (SELECT id FROM applications WHERE candidate_id=$1)",
       [candidateId],
