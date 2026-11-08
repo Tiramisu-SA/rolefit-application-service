@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
+import * as grpc from "@grpc/grpc-js";
 import { createApp } from "../src/app";
 import {
   AppError,
@@ -19,7 +20,10 @@ const PDF_TYPE = "application/pdf";
 const DOCX_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MAX = 5 * 1024 * 1024;
-const pdfBytes = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(100, 1)]);
+const pdfBytes = Buffer.concat([
+  Buffer.from("%PDF-1.7\n"),
+  Buffer.alloc(100, 1),
+]);
 const docxBytes = Buffer.concat([
   Buffer.from([0x50, 0x4b, 0x03, 0x04]),
   Buffer.alloc(100, 2),
@@ -67,6 +71,7 @@ function memoryStore() {
         ...structuredClone(rest),
         id: `app_${writes}`,
         candidateId: caller.userId,
+        resumeSource: resumeUpload ? "uploaded" : "tailored",
         resumeFile: resumeUpload
           ? {
               fileName: resumeUpload.fileName,
@@ -93,8 +98,7 @@ function memoryStore() {
       const a = saved.get(id);
       if (!a) throw new AppError(404, "APPLICATION_NOT_FOUND", "nf");
       authorize(a, c);
-      if (!a._file)
-        throw new AppError(404, "RESUME_FILE_NOT_FOUND", "no file");
+      if (!a._file) throw new AppError(404, "RESUME_FILE_NOT_FOUND", "no file");
       return a._file;
     },
     mine: async () => [...saved.values()].map(view),
@@ -224,8 +228,10 @@ test("resumeFile accepts PDF and DOCX, trims the name, and enforces the 5 MB lim
   const big = (n: number) =>
     Buffer.concat([Buffer.from("%PDF-"), Buffer.alloc(n - 5, 7)]);
   assert.equal(
-    parseSubmission({ jobId: "j", resumeFile: file(big(MAX), "a.pdf", PDF_TYPE) })
-      .resumeFile?.content.length,
+    parseSubmission({
+      jobId: "j",
+      resumeFile: file(big(MAX), "a.pdf", PDF_TYPE),
+    }).resumeFile?.content.length,
     MAX,
   );
   assert.deepEqual(
@@ -247,7 +253,6 @@ test("resumeFile accepts PDF and DOCX, trims the name, and enforces the 5 MB lim
 
 test("applying with an uploaded file skips the approved resume, stores the file and serves it", async () => {
   await withService(async ({ origin, fixtures, db }) => {
-    // Large body (~7 MB base64) passes this route's raised JSON limit.
     const response = await post(origin, {
       jobId: "job_contract",
       coverLetter: "Hello",
@@ -285,7 +290,7 @@ test("applying with an uploaded file skips the approved resume, stores the file 
     assert.equal(download.headers.get("cache-control"), "private, no-store");
     assert.ok(Buffer.from(await download.arrayBuffer()).equals(pdfBytes));
 
-    // The owning company's recruiter can read it; lists carry no bytes.
+    // The owning company's recruiter can read it.
     const asRecruiter = await fetch(
       origin + `/api/applications/${application.id}/resume-file`,
       { headers: recruiter("co-contract") },
@@ -330,7 +335,10 @@ test("download access follows the application read rule", async () => {
     assert.equal((await missing.json()).error.code, "APPLICATION_NOT_FOUND");
     assert.equal((await fetch(url)).status, 401);
     // Application reads and lists include metadata only.
-    for (const path of ["/api/applications/mine", "/api/applications?jobId=job_contract"]) {
+    for (const path of [
+      "/api/applications/mine",
+      "/api/applications?jobId=job_contract",
+    ]) {
       const list = await (
         await fetch(origin + path, {
           headers: path.includes("mine") ? seeker : recruiter(company),
@@ -368,18 +376,23 @@ test("tailored applications still need the approved resume and report no file", 
 
 test("an upload ignores a missing approved draft but still enforces the other rules", async () => {
   await withService(async ({ origin, fixtures, db }) => {
-    const { grpc } = { grpc: await import("@grpc/grpc-js") };
     fixtures.state.resumeError = grpc.status.FAILED_PRECONDITION;
     assert.equal((await post(origin, { jobId: "job_contract" })).status, 409);
     fixtures.state.requireCoverLetter = true;
-    const res = await post(origin, { jobId: "job_contract", resumeFile: pdf() });
+    const res = await post(origin, {
+      jobId: "job_contract",
+      resumeFile: pdf(),
+    });
     assert.equal(res.status, 409);
     assert.equal((await res.json()).error.code, "COVER_LETTER_REQUIRED");
     fixtures.state.requireCoverLetter = false;
     assert.equal(db.writes(), 0);
     const ok = await post(origin, { jobId: "job_contract", resumeFile: pdf() });
     assert.equal(ok.status, 201);
-    const again = await post(origin, { jobId: "job_contract", resumeFile: pdf() });
+    const again = await post(origin, {
+      jobId: "job_contract",
+      resumeFile: pdf(),
+    });
     assert.equal(again.status, 409);
     assert.equal((await again.json()).error.code, "ALREADY_APPLIED");
   });
@@ -402,10 +415,7 @@ test("invalid files return 400 with field details and write nothing", async () =
 
 test("a 5 MB file (about 7 MB of JSON) is accepted, other routes keep the small body limit", async () => {
   await withService(async ({ origin }) => {
-    const big = Buffer.concat([
-      Buffer.from("%PDF-"),
-      Buffer.alloc(MAX - 5, 7),
-    ]);
+    const big = Buffer.concat([Buffer.from("%PDF-"), Buffer.alloc(MAX - 5, 7)]);
     const res = await post(origin, {
       jobId: "job_contract",
       resumeFile: file(big, "big.pdf", PDF_TYPE),
@@ -413,9 +423,20 @@ test("a 5 MB file (about 7 MB of JSON) is accepted, other routes keep the small 
     assert.equal(res.status, 201);
     const status = await fetch(origin + "/api/applications/app_1/status", {
       method: "PATCH",
-      headers: recruiter("co-contract"),
-      body: JSON.stringify({ status: "Offer", note: "x".repeat(20000) }),
+      headers: {
+        ...recruiter("co-contract"),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        status: "Offer",
+        note: "x".repeat(2000),
+        pad: "y".repeat(20000),
+      }),
     });
     assert.equal(status.status, 400);
+    assert.equal(
+      (await status.json()).error.message,
+      "Invalid JSON or request body too large",
+    );
   });
 });

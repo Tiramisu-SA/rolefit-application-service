@@ -75,7 +75,6 @@ export interface SubmissionData {
   resumeSnapshot: ApprovedResume | null;
   /** Set when the seeker uploaded their own file; the tailored fields are then null. */
   resumeUpload: ResumeUpload | null;
-  resumeSource: "tailored" | "uploaded";
   matchSnapshot: MatchResult & { summary: string; capturedAt: string };
   coverLetter: string | null;
 }
@@ -288,7 +287,6 @@ export class SubmissionService {
           : null,
         resumeSnapshot: resume,
         resumeUpload: input.resumeFile,
-        resumeSource: input.resumeFile ? "uploaded" : "tailored",
         matchSnapshot: {
           ...match,
           summary: match.explanation,

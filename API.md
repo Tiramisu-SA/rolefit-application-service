@@ -116,7 +116,7 @@ All errors use `{ "error": { "code": "...", "message": "..." } }`.
 
 | HTTP | Code                                             | Meaning                                                                                 |
 | ---- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| 400  | `VALIDATION_ERROR`                               | Invalid status, note, query, JSON, extra field, oversized body, or invalid `resumeFile` (with `details[]`) |
+| 400  | `VALIDATION_ERROR`                               | Invalid status, note, query, JSON, extra field, size, or `resumeFile` (`details[]`)     |
 | 401  | `MISSING_IDENTITY`                               | Required verified identity header missing                                               |
 | 403  | `FORBIDDEN`                                      | Unsupported role or caller does not own the application                                 |
 | 404  | `APPLICATION_NOT_FOUND`                          | Unknown application ID                                                                  |

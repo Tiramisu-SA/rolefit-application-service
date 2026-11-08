@@ -32,6 +32,7 @@ function memoryStore() {
       const { resumeUpload: _upload, ...snapshot } = structuredClone(data);
       saved = {
         resumeFile: null,
+        resumeSource: "tailored",
         id: "app_contract",
         candidateId,
         ...snapshot,

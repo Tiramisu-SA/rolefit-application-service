@@ -57,10 +57,9 @@ export function createApp(
   // Only submission carries a base64 resume (5 MB file ~ 6.7 MB of JSON).
   const smallJson = express.json({ limit: "16kb" });
   const submissionJson = express.json({ limit: "8mb" });
+  app.post("/api/applications", submissionJson);
   app.use((req, res, next) =>
-    (req.method === "POST" && req.path === "/api/applications"
-      ? submissionJson
-      : smallJson)(req, res, next),
+    req.body !== undefined ? next() : smallJson(req, res, next),
   );
   app.use("/api", (req, _res, next) => {
     try {
@@ -160,15 +159,13 @@ export function createApp(
   );
   app.use((error: any, _req: Request, res: Response, _next: NextFunction) => {
     if (error instanceof AppError) {
-      res
-        .status(error.httpStatus)
-        .json({
-          error: {
-            code: error.code,
-            message: error.message,
-            ...(error.details ? { details: error.details } : {}),
-          },
-        });
+      res.status(error.httpStatus).json({
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.details ? { details: error.details } : {}),
+        },
+      });
       return;
     }
     if (

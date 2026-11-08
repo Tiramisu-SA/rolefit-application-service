@@ -44,6 +44,7 @@ function memoryStore() {
       const application: Application = {
         ...snapshot,
         resumeFile: null,
+        resumeSource: "tailored",
         id: `app_${saved.length}`,
         candidateId: caller.userId,
         status: "Submitted",
