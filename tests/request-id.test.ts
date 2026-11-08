@@ -36,6 +36,9 @@ const baseStore: ApplicationStore = {
   get: async () => {
     throw new AppError(404, "APPLICATION_NOT_FOUND", "Application not found");
   },
+  getResumeFile: async () => {
+    throw new Error("Not exercised");
+  },
   mine: async () => [],
   applicants: async () => [],
   update: async () => {

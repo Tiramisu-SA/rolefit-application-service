@@ -7,6 +7,7 @@ import express, {
 import { AppError, type ApplicationStore, type Caller } from "./repository";
 import { STATUSES, type Status } from "./event";
 import { logger } from "./logger";
+import { attachmentDisposition } from "./resume-file";
 import { requestContext } from "./request-context.middleware";
 
 function caller(req: Request): Caller {
@@ -53,7 +54,14 @@ export function createApp(
   // After the checks polled every few seconds, so they are not logged; before the
   // body parser, so a malformed body is logged with its request id too.
   app.use(requestContext);
-  app.use(express.json({ limit: "16kb" }));
+  // Only submission carries a base64 resume (5 MB file ~ 6.7 MB of JSON).
+  const smallJson = express.json({ limit: "16kb" });
+  const submissionJson = express.json({ limit: "8mb" });
+  app.use((req, res, next) =>
+    (req.method === "POST" && req.path === "/api/applications"
+      ? submissionJson
+      : smallJson)(req, res, next),
+  );
   app.use("/api", (req, _res, next) => {
     try {
       resCaller(req, caller(req));
@@ -91,6 +99,21 @@ export function createApp(
         "jobId is required (max 200 characters)",
       );
     res.json({ applications: await store.applicants(jobId, getCaller(req)) });
+  });
+  app.get("/api/applications/:applicationId/resume-file", async (req, res) => {
+    const file = await store.getResumeFile(
+      req.params.applicationId as string,
+      getCaller(req),
+    );
+    res
+      .status(200)
+      .set({
+        "Content-Type": file.contentType,
+        "Content-Disposition": attachmentDisposition(file.fileName),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+      })
+      .send(file.content);
   });
   app.get("/api/applications/:applicationId", async (req, res) =>
     res.json({
@@ -139,7 +162,13 @@ export function createApp(
     if (error instanceof AppError) {
       res
         .status(error.httpStatus)
-        .json({ error: { code: error.code, message: error.message } });
+        .json({
+          error: {
+            code: error.code,
+            message: error.message,
+            ...(error.details ? { details: error.details } : {}),
+          },
+        });
       return;
     }
     if (

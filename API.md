@@ -43,7 +43,7 @@ Lists are ordered by latest `updatedAt`, then ID. This prototype returns the com
 
 ### Submit application
 
-`POST /api/applications` accepts `{ jobId, coverLetter? }`. Only a seeker may submit. `jobId` matches `[A-Za-z0-9_-]{1,100}`; `coverLetter` is optional text up to 10,000 characters, trimmed, and required when the job requires it. The existing 16 KiB JSON limit applies. Extra fields, including candidate identity, recipient email, resume content or match scores, are rejected.
+`POST /api/applications` accepts `{ jobId, coverLetter?, resumeFile? }`. Only a seeker may submit. `jobId` matches `[A-Za-z0-9_-]{1,100}`; `coverLetter` is optional text up to 10,000 characters, trimmed, and required when the job requires it. Extra fields, including candidate identity, recipient email, resume content or match scores, are rejected.
 
 The gateway supplies verified `X-User-Id` (UUID), `X-User-Role: seeker`, and preserves `Authorization: Bearer <token>`. Application checks header/token shape, does not verify or decode JWTs, and forwards the token to owning services that require it. A client-supplied `X-Company-Id` is never forwarded on seeker service calls.
 
@@ -75,6 +75,17 @@ Each upstream call has `UPSTREAM_TIMEOUT_MS` (default 5,000 ms). gRPC and stream
 
 These reads and the local DB commit cannot form one transaction across service databases. Snapshots reflect the successful reads; an upstream edit/closure immediately after a read can race submission. Application rechecks the returned deadline before persistence, but does not claim an atomic job/resume reservation.
 
+### Apply with an uploaded resume
+
+`resumeFile` is `{ fileName, contentType, contentBase64 }` and is optional. Without it, submission works exactly as above and needs an approved Resume Preparation draft. With it, `GetApprovedResume` is **not** called (the job, match and profile reads, the deadline, cover-letter and one-application-per-job rules still apply), `resumeReference` and `resumeSnapshot` are null, and the file is stored in `application_resume_files` in the same transaction as the application (migration `006_uploaded_resume.sql`).
+
+- `contentType`: `application/pdf` or `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, and the decoded bytes must start with `%PDF-` or `PK\x03\x04` respectively.
+- `fileName`: trimmed, 1 to 200 characters, ending in `.pdf` or `.docx` matching the type; no `/`, `\` or control characters.
+- Decoded size 1 byte to 5 MB (5,242,880 bytes). The JSON body limit is 8 MB for `POST /api/applications` only (16 KiB elsewhere).
+- Invalid input returns 400 `VALIDATION_ERROR` with `error.details[]` of `{ field, message }`, for example `resumeFile.contentBase64` / `must be at most 5 MB`. Errors never echo the file content or name, and logs never contain them.
+
+`GET /api/applications/:applicationId/resume-file` returns the stored bytes with `Content-Type` set to the stored type, `Content-Disposition: attachment; filename*=UTF-8''<encoded name>`, `X-Content-Type-Options: nosniff` and `Cache-Control: private, no-store`. Access is the same as `GET /api/applications/:applicationId` (the applying seeker or a recruiter of the job's company). It returns 404 `RESUME_FILE_NOT_FOUND` when the application has no uploaded file. Bytes are only read by this endpoint; application reads and lists return metadata only.
+
 ### Read application
 
 `GET /api/applications/:applicationId` already exists and now includes stored `resumeSnapshot` and `coverLetter`. Access remains restricted to the owning seeker or recruiter company. It reads status/history consistently from one database statement and makes no upstream calls, including when the job closes or the original resume is edited afterward.
@@ -97,7 +108,7 @@ Statuses, including exact casing: `Submitted`, `Under review`, `Interview`, `Off
 
 The response contains the full updated application, including history, plus `notificationQueued: true` when an outbox event was committed. This does **not** mean RabbitMQ or SMTP has already accepted it. Setting the current status returns `notificationQueued: false` and does not alter history, timestamp, or notes.
 
-Application fields are `id`, `jobId`, `companyId`, `candidateId`, `candidate` (`id`, `name`, `email`), `jobSnapshot` (`id`, `title`, `companyId`), nullable `resumeReference`, nullable `resumeSnapshot`, nullable `matchSnapshot`, nullable `coverLetter`, `status`, ISO-8601 UTC `submittedAt`/`updatedAt`, and `history` (`status`, `at`, `changedBy`, nullable `note`). Existing snapshots are preserved. Local seed fixtures have null resume/match snapshots and are not real submissions.
+Application fields are `id`, `jobId`, `companyId`, `candidateId`, `candidate` (`id`, `name`, `email`), `jobSnapshot` (`id`, `title`, `companyId`), nullable `resumeReference`, nullable `resumeSnapshot` (null for uploaded resumes; recruiters receive it too), `resumeSource` (`tailored` or `uploaded`), `resumeFile` (`{ fileName, contentType, sizeBytes }` or null), nullable `matchSnapshot`, nullable `coverLetter`, `status`, ISO-8601 UTC `submittedAt`/`updatedAt`, and `history` (`status`, `at`, `changedBy`, nullable `note`). Existing snapshots are preserved. Local seed fixtures have null resume/match snapshots and are not real submissions.
 
 ### Errors
 
@@ -105,10 +116,11 @@ All errors use `{ "error": { "code": "...", "message": "..." } }`.
 
 | HTTP | Code                                             | Meaning                                                                                 |
 | ---- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| 400  | `VALIDATION_ERROR`                               | Invalid status, note, query, JSON, extra field, or oversized body                       |
+| 400  | `VALIDATION_ERROR`                               | Invalid status, note, query, JSON, extra field, oversized body, or invalid `resumeFile` (with `details[]`) |
 | 401  | `MISSING_IDENTITY`                               | Required verified identity header missing                                               |
 | 403  | `FORBIDDEN`                                      | Unsupported role or caller does not own the application                                 |
 | 404  | `APPLICATION_NOT_FOUND`                          | Unknown application ID                                                                  |
+| 404  | `RESUME_FILE_NOT_FOUND`                          | The application has no uploaded resume file                                             |
 | 404  | `ROUTE_NOT_FOUND`                                | Unsupported endpoint                                                                    |
 | 409  | `NOTIFICATION_DATA_INVALID`                      | Stored recipient/job snapshot cannot form a valid notification                          |
 | 401  | `MISSING_AUTHORIZATION`                          | Submission bearer token not forwarded                                                   |

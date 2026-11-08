@@ -40,8 +40,10 @@ function memoryStore() {
     hasApplication: async () => false,
     submit: async (data: SubmissionData, caller: Caller) => {
       const at = new Date().toISOString();
+      const { resumeUpload: _upload, ...snapshot } = structuredClone(data);
       const application: Application = {
-        ...structuredClone(data),
+        ...snapshot,
+        resumeFile: null,
         id: `app_${saved.length}`,
         candidateId: caller.userId,
         status: "Submitted",
@@ -55,6 +57,9 @@ function memoryStore() {
       return application;
     },
     get: async () => saved[0],
+    getResumeFile: async () => {
+      throw new Error("Not exercised");
+    },
     mine: async () => saved,
     applicants: async () => saved,
     update: async () => {

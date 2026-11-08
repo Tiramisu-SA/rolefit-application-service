@@ -29,10 +29,12 @@ function memoryStore() {
     hasApplication: async () => !!saved,
     submit: async (data: SubmissionData) => {
       writes++;
+      const { resumeUpload: _upload, ...snapshot } = structuredClone(data);
       saved = {
+        resumeFile: null,
         id: "app_contract",
         candidateId,
-        ...structuredClone(data),
+        ...snapshot,
         status: "Submitted",
         submittedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -48,6 +50,9 @@ function memoryStore() {
       return saved;
     },
     get: async () => saved!,
+    getResumeFile: async () => {
+      throw new Error("Not exercised");
+    },
     mine: async () => (saved ? [saved] : []),
     applicants: async () => [],
     update: async () => {

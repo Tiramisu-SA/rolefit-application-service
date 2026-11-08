@@ -549,6 +549,57 @@
                 },
             },
         },
+      "/api/applications/{applicationId}/resume-file":
+        {
+          "get":
+            {
+              "operationId": "downloadApplicationResumeFile",
+              "description": "Downloads the resume file uploaded with the application. Same access rule as getApplication: the seeker who applied or a recruiter of the job's company. 404 RESUME_FILE_NOT_FOUND when the application used the tailored resume.",
+              "parameters":
+                [
+                  { "name": "X-User-Id", "in": "header", "required": true, "schema": { "type": "string" } },
+                  { "name": "X-User-Role", "in": "header", "required": true, "schema": { "type": "string" } },
+                  { "name": "X-Company-Id", "in": "header", "required": false, "schema": { "type": "string" }, "description": "Required for every recruiter request" },
+                  { "name": "applicationId", "in": "path", "required": true, "schema": { "type": "string" } },
+                ],
+              "responses":
+                {
+                  "200":
+                    {
+                      "description": "File bytes. Content-Disposition: attachment; filename*=UTF-8''<encoded name>; X-Content-Type-Options: nosniff; Cache-Control: private, no-store.",
+                      "content":
+                        {
+                          "application/pdf": { "schema": { "type": "string", "format": "binary" } },
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { "schema": { "type": "string", "format": "binary" } },
+                        },
+                    },
+                  "401":
+                    {
+                      "description": "Missing verified identity",
+                      "content":
+                        { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                    },
+                  "403":
+                    {
+                      "description": "Forbidden",
+                      "content":
+                        { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                    },
+                  "404":
+                    {
+                      "description": "APPLICATION_NOT_FOUND or RESUME_FILE_NOT_FOUND",
+                      "content":
+                        { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                    },
+                  "503":
+                    {
+                      "description": "Storage unavailable",
+                      "content":
+                        { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                    },
+                },
+            },
+        },
       "/api/applications/{applicationId}/status":
         {
           "patch":
@@ -763,6 +814,21 @@
                         {
                           "code": { "type": "string" },
                           "message": { "type": "string" },
+                          "details":
+                            {
+                              "type": "array",
+                              "description": "Per-field errors on VALIDATION_ERROR for resumeFile, e.g. resumeFile.contentBase64.",
+                              "items":
+                                {
+                                  "type": "object",
+                                  "required": ["field", "message"],
+                                  "properties":
+                                    {
+                                      "field": { "type": "string" },
+                                      "message": { "type": "string" },
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -864,6 +930,8 @@
                   "updatedAt",
                   "history",
                   "resumeSnapshot",
+                  "resumeSource",
+                  "resumeFile",
                   "coverLetter",
                   "development",
                 ],
@@ -908,6 +976,13 @@
                       "type": "array",
                       "items": { "$ref": "#/components/schemas/HistoryEntry" },
                     },
+                  "resumeSource":
+                    {
+                      "type": "string",
+                      "enum": ["tailored", "uploaded"],
+                      "description": "uploaded: the seeker's own file (resumeSnapshot is null); tailored: the approved AI resume.",
+                    },
+                  "resumeFile": { "$ref": "#/components/schemas/ResumeFileMeta" },
                   "resumeSnapshot":
                     {
                       "type": "object",
@@ -1293,6 +1368,49 @@
                       "maxLength": 10000,
                       "description": "Required if Job Posting requires a cover letter. Trimmed; empty becomes null.",
                     },
+                  "resumeFile":
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["fileName", "contentType", "contentBase64"],
+                      "description": "Optional own resume. When present, no approved Resume Preparation draft is required and resumeSnapshot is null. Decoded size 1 byte to 5 MB (5242880); the type is checked against the content's magic bytes. This route accepts JSON bodies up to 8 MB.",
+                      "properties":
+                        {
+                          "fileName":
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200,
+                              "description": "Trimmed; must end with .pdf or .docx matching contentType; no path separators or control characters.",
+                            },
+                          "contentType":
+                            {
+                              "type": "string",
+                              "enum":
+                                [
+                                  "application/pdf",
+                                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                ],
+                            },
+                          "contentBase64":
+                            {
+                              "type": "string",
+                              "description": "Standard base64 of the file bytes (PDF starts with %PDF-, DOCX with PK 03 04).",
+                            },
+                        },
+                    },
+                },
+            },
+          "ResumeFileMeta":
+            {
+              "type": "object",
+              "nullable": true,
+              "required": ["fileName", "contentType", "sizeBytes"],
+              "properties":
+                {
+                  "fileName": { "type": "string" },
+                  "contentType": { "type": "string" },
+                  "sizeBytes": { "type": "integer" },
                 },
             },
         },
